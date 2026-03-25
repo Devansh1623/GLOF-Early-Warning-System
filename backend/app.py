@@ -1,0 +1,634 @@
+"""
+GLOF Early Warning System — Flask Application (Production-Grade)
+Features:
+  - Input validation (marshmallow)
+  - Rate limiting (flask-limiter)
+  - HMAC-SHA256 sensor authentication
+  - Structured JSON logging
+  - Prometheus metrics
+  - Swagger / OpenAPI docs
+  - Alert state-machine (OPEN → ACKNOWLEDGED → RESOLVED)
+  - Audit logging
+  - Trend analysis + data export endpoints
+  - Improved /health endpoint
+"""
+import os
+import json
+import time
+import hmac
+import hashlib
+import csv
+import io
+from datetime import datetime, timedelta, timezone
+
+from flask import Flask, Response, request, jsonify, stream_with_context
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, get_jwt
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flasgger import Swagger
+from prometheus_flask_exporter import PrometheusMetrics
+from prometheus_client import Counter, Gauge
+from pymongo import MongoClient, DESCENDING
+from bson import ObjectId
+import redis
+
+from routes.auth import auth_bp, init_auth
+from routes.data import lakes_bp, events_bp, alerts_bp, init_lakes, init_events, init_alerts
+from models.seed import seed_database
+from core.risk_engine import calculate_risk, should_alert
+from core.schemas import TelemetrySchema, validate_json
+from core.logger import telemetry_log, alert_log, audit_log, get_logger
+
+app_log = get_logger("glof.app")
+
+# ─── App Setup ────────────────────────────────────────────────────────────────
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}})
+
+# Swagger / OpenAPI
+app.config["SWAGGER"] = {
+    "title": "GLOF Early Warning System API",
+    "uiversion": 3,
+    "description": "Real-time Glacial Lake Outburst Flood monitoring API",
+    "version": "2.0.0",
+}
+swagger = Swagger(app)
+
+# JWT
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "change-me-in-prod")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
+jwt = JWTManager(app)
+
+# Rate Limiter (uses Redis when available, memory fallback)
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["200 per minute"],
+    storage_uri=f"redis://{REDIS_HOST}:{REDIS_PORT}",
+)
+
+# Prometheus Metrics
+metrics = PrometheusMetrics(app, group_by="endpoint")
+TELEMETRY_COUNTER = Counter(
+    "glof_telemetry_received_total", "Total telemetry readings received"
+)
+ALERT_COUNTER = Counter(
+    "glof_alerts_fired_total", "Total alerts fired", ["level"]
+)
+RISK_GAUGE = Gauge(
+    "glof_lake_risk_score", "Current risk score per lake", ["lake_id"]
+)
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/glof_db")
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+db = mongo_client.glof_db
+
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+
+# Sensor HMAC key (IoT authentication)
+SENSOR_API_KEY = os.environ.get("SENSOR_API_KEY", "glof-sensor-secret-key-2024")
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+def verify_sensor_hmac(request_data: dict, signature: str) -> bool:
+    """Verify HMAC-SHA256 signature from IoT sensor."""
+    expected = hmac.new(
+        SENSOR_API_KEY.encode(),
+        json.dumps(request_data, sort_keys=True).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def write_audit_log(action: str, actor: str, details: dict = None):
+    """Write an audit entry to MongoDB and the audit logger."""
+    entry = {
+        "action": action,
+        "actor": actor,
+        "details": details or {},
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "remote_addr": request.remote_addr,
+    }
+    db.audit_logs.insert_one(entry)
+    audit_log.info(action, extra={"user": actor, **{k: v for k, v in (details or {}).items() if isinstance(v, (str, int, float))}})
+
+
+def create_demo_users(database):
+    """Create default demo accounts if they don't exist."""
+    import bcrypt
+    defaults = [
+        {"email": "admin@glof.in", "password": "admin123", "name": "NDMA Admin", "role": "admin"},
+        {"email": "user@glof.in", "password": "user123", "name": "Researcher", "role": "user"},
+    ]
+    for u in defaults:
+        if not database.users.find_one({"email": u["email"]}):
+            hashed = bcrypt.hashpw(u["password"].encode(), bcrypt.gensalt())
+            database.users.insert_one({
+                "email": u["email"], "name": u["name"], "role": u["role"],
+                "password": hashed, "created_at": datetime.now(tz=timezone.utc),
+            })
+            app_log.info(f"Created demo user: {u['email']}")
+
+
+# ─── Startup ──────────────────────────────────────────────────────────────────
+seed_database(db)
+create_demo_users(db)
+
+# Register blueprints
+app.register_blueprint(init_auth(db), url_prefix="/api/auth")
+app.register_blueprint(init_lakes(db), url_prefix="/api/lakes")
+app.register_blueprint(init_events(db), url_prefix="/api/events")
+app.register_blueprint(init_alerts(db, redis_client), url_prefix="/api/alerts")
+
+
+# ─── Telemetry Endpoint ────────────────────────────────────────────────────────
+@app.route("/api/telemetry", methods=["POST"])
+@limiter.limit("500 per minute")
+def receive_telemetry():
+    """
+    Ingest sensor telemetry reading.
+    ---
+    tags:
+      - Telemetry
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            lake_id: {type: string, example: GL001}
+            lake_name: {type: string}
+            temperature: {type: number, example: 12.5}
+            rainfall: {type: number, example: 45.2}
+            water_level_rise: {type: number, example: 120.0}
+    responses:
+      200:
+        description: Risk score and alert status
+      400:
+        description: Validation error
+      401:
+        description: Invalid sensor signature
+    """
+    raw_data = request.get_json()
+    if not raw_data:
+        return jsonify({"error": "No JSON body"}), 400
+
+    # Optional HMAC verification (enabled only if header present — backward compat)
+    sig = request.headers.get("X-Sensor-Signature")
+    if sig and not verify_sensor_hmac(raw_data, sig):
+        app_log.warning("Invalid sensor signature rejected", extra={"remote_addr": request.remote_addr})
+        return jsonify({"error": "Invalid sensor signature"}), 401
+
+    # Validate inputs
+    data, errors = validate_json(TelemetrySchema, raw_data)
+    if errors:
+        return jsonify({"error": "Validation failed", "details": errors}), 422
+
+    lake_id = data["lake_id"]
+    temp = data["temperature"]
+    rainfall = data["rainfall"]
+    wl_rise = data["water_level_rise"]
+    timestamp = data.get("timestamp") or datetime.now(tz=timezone.utc).isoformat()
+
+    # ── Velocity feature (rate-of-change from Redis rolling window) ──────────
+    window_key = f"wl_window:{lake_id}"
+    redis_client.rpush(window_key, wl_rise)
+    redis_client.ltrim(window_key, -10, -1)  # Keep last 10 readings
+    redis_client.expire(window_key, 3600)
+
+    wl_history = [float(v) for v in redis_client.lrange(window_key, 0, -1)]
+    velocity = 0.0
+    if len(wl_history) >= 2:
+        velocity = (wl_history[-1] - wl_history[0]) / max(len(wl_history) - 1, 1)
+
+    # ── Risk Calculation ──────────────────────────────────────────────────────
+    risk = calculate_risk(temp, rainfall, wl_rise, velocity=velocity)
+    alert_info = should_alert(risk)
+
+    # ── Build telemetry document ──────────────────────────────────────────────
+    tel_doc = {
+        "lake_id": lake_id,
+        "lake_name": data["lake_name"],
+        "timestamp": timestamp,
+        "temperature": temp,
+        "rainfall": rainfall,
+        "water_level_rise": wl_rise,
+        "velocity": round(velocity, 3),
+        "risk_score": risk["score"],
+        "risk_level": risk["level"],
+        "risk_color": risk["color"],
+        "breakdown": risk["breakdown"],
+        "ml_score": risk.get("ml_score"),
+    }
+
+    # ── Persist ───────────────────────────────────────────────────────────────
+    db.telemetry.insert_one({**tel_doc})
+    db.lakes.update_one({"id": lake_id}, {"$set": {
+        "current_risk_score": risk["score"],
+        "current_risk_level": risk["level"],
+        "last_updated": datetime.now(tz=timezone.utc).isoformat(),
+    }})
+
+    # ── Prometheus ────────────────────────────────────────────────────────────
+    TELEMETRY_COUNTER.inc()
+    RISK_GAUGE.labels(lake_id=lake_id).set(risk["score"])
+
+    # ── Alert ─────────────────────────────────────────────────────────────────
+    if alert_info["alert"]:
+        alert_doc = {
+            "lake_id": lake_id,
+            "lake_name": data["lake_name"],
+            "type": alert_info["type"],
+            "message": alert_info["message"],
+            "risk_score": risk["score"],
+            "risk_level": risk["level"],
+            "timestamp": timestamp,
+            "status": "OPEN",            # State-machine field
+            "resolved": False,
+            "is_test": False,
+        }
+        db.alerts.insert_one(alert_doc)
+        ALERT_COUNTER.labels(level=risk["level"]).inc()
+        alert_log.warning(
+            f"Alert fired: {alert_info['type']}",
+            extra={"lake_id": lake_id, "risk_score": risk["score"], "alert_type": alert_info["type"]},
+        )
+
+    # ── Redis pub/sub ─────────────────────────────────────────────────────────
+    payload = {**tel_doc, "alert": alert_info}
+    redis_client.publish("glof_stream", json.dumps(payload, default=str))
+
+    telemetry_log.info(
+        f"Telemetry received: {lake_id}",
+        extra={"lake_id": lake_id, "risk_score": risk["score"]},
+    )
+    return jsonify({"status": "ok", "risk": risk, "alert": alert_info}), 200
+
+
+# ─── SSE Stream ───────────────────────────────────────────────────────────────
+@app.route("/api/stream")
+def sse_stream():
+    """
+    Server-Sent Events live data stream.
+    ---
+    tags:
+      - Streaming
+    responses:
+      200:
+        description: text/event-stream of telemetry + alert events
+    """
+    def event_generator():
+        pubsub = redis_client.pubsub()
+        pubsub.subscribe("glof_stream")
+        yield 'data: {"type": "connected"}\n\n'
+        for message in pubsub.listen():
+            if message["type"] == "message":
+                yield f"data: {message['data']}\n\n"
+
+    return Response(
+        stream_with_context(event_generator()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": os.environ.get("CORS_ORIGINS", "*"),
+        },
+    )
+
+
+# ─── Dashboard Summary ────────────────────────────────────────────────────────
+@app.route("/api/dashboard/summary", methods=["GET"])
+@jwt_required()
+def dashboard_summary():
+    """
+    Aggregated summary for dashboard cards.
+    ---
+    tags:
+      - Dashboard
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Summary stats
+    """
+    total_lakes = db.lakes.count_documents({})
+    critical = db.lakes.count_documents({"current_risk_level": "Critical"})
+    high = db.lakes.count_documents({"current_risk_level": "High"})
+    active_alerts = db.alerts.count_documents({"resolved": False})
+    total_events = db.glof_events.count_documents({})
+
+    latest_telemetry = list(db.telemetry.find({}, {"_id": 0}).sort("timestamp", DESCENDING).limit(1))
+
+    return jsonify({
+        "total_lakes": total_lakes,
+        "critical_lakes": critical,
+        "high_risk_lakes": high,
+        "active_alerts": active_alerts,
+        "total_events": total_events,
+        "latest_reading": latest_telemetry[0] if latest_telemetry else None,
+    }), 200
+
+
+# ─── Trend Analysis ───────────────────────────────────────────────────────────
+@app.route("/api/lakes/<lake_id>/trend", methods=["GET"])
+@jwt_required()
+def lake_trend(lake_id):
+    """
+    Returns 6-hour trend and velocity for a lake.
+    ---
+    tags:
+      - Lakes
+    parameters:
+      - name: lake_id
+        in: path
+        type: string
+        required: true
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Trend statistics
+    """
+    since = datetime.now(tz=timezone.utc) - timedelta(hours=6)
+    readings = list(
+        db.telemetry.find(
+            {"lake_id": lake_id, "timestamp": {"$gte": since.isoformat()}},
+            {"_id": 0, "water_level_rise": 1, "risk_score": 1, "timestamp": 1},
+        ).sort("timestamp", 1)
+    )
+
+    if len(readings) < 2:
+        return jsonify({
+            "lake_id": lake_id,
+            "trend": "insufficient_data",
+            "velocity_cm_per_reading": 0,
+            "risk_delta": 0,
+            "readings_count": len(readings),
+        }), 200
+
+    first_wl = readings[0]["water_level_rise"]
+    last_wl = readings[-1]["water_level_rise"]
+    first_risk = readings[0]["risk_score"]
+    last_risk = readings[-1]["risk_score"]
+
+    velocity = (last_wl - first_wl) / max(len(readings) - 1, 1)
+    risk_delta = last_risk - first_risk
+
+    if velocity > 2:
+        trend = "rising_fast"
+    elif velocity > 0.5:
+        trend = "rising"
+    elif velocity < -0.5:
+        trend = "falling"
+    else:
+        trend = "stable"
+
+    return jsonify({
+        "lake_id": lake_id,
+        "trend": trend,
+        "velocity_cm_per_reading": round(velocity, 3),
+        "risk_delta": round(risk_delta, 2),
+        "readings_count": len(readings),
+        "first_wl": first_wl,
+        "last_wl": last_wl,
+        "first_risk": first_risk,
+        "last_risk": last_risk,
+    }), 200
+
+
+# ─── Data Export ──────────────────────────────────────────────────────────────
+@app.route("/api/lakes/<lake_id>/export", methods=["GET"])
+@jwt_required()
+def export_telemetry(lake_id):
+    """
+    Export telemetry data as CSV or JSON.
+    ---
+    tags:
+      - Lakes
+    parameters:
+      - name: lake_id
+        in: path
+        type: string
+        required: true
+      - name: format
+        in: query
+        type: string
+        enum: [csv, json]
+        default: json
+      - name: from
+        in: query
+        type: string
+        description: ISO timestamp
+      - name: to
+        in: query
+        type: string
+        description: ISO timestamp
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Data file
+    """
+    fmt = request.args.get("format", "json").lower()
+    from_ts = request.args.get("from")
+    to_ts = request.args.get("to")
+
+    query = {"lake_id": lake_id}
+    if from_ts or to_ts:
+        query["timestamp"] = {}
+        if from_ts:
+            query["timestamp"]["$gte"] = from_ts
+        if to_ts:
+            query["timestamp"]["$lte"] = to_ts
+
+    rows = list(db.telemetry.find(query, {"_id": 0}).sort("timestamp", 1))
+
+    if fmt == "csv":
+        if not rows:
+            return Response("No data", mimetype="text/plain"), 204
+
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=["lake_id", "lake_name", "timestamp", "temperature",
+                        "rainfall", "water_level_rise", "velocity",
+                        "risk_score", "risk_level"],
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+        csv_content = output.getvalue()
+
+        return Response(
+            csv_content,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={lake_id}_telemetry.csv"},
+        )
+
+    return jsonify(rows), 200
+
+
+# ─── Alert Acknowledgement ────────────────────────────────────────────────────
+@app.route("/api/alerts/acknowledge/<alert_id>", methods=["PATCH"])
+@jwt_required()
+def acknowledge_alert(alert_id):
+    """
+    Acknowledge an open alert (state: OPEN → ACKNOWLEDGED).
+    ---
+    tags:
+      - Alerts
+    parameters:
+      - name: alert_id
+        in: path
+        type: string
+        required: true
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Alert acknowledged
+      404:
+        description: Alert not found
+    """
+    try:
+        obj_id = ObjectId(alert_id)
+    except Exception:
+        return jsonify({"error": "Invalid alert ID"}), 400
+
+    user = get_jwt_identity()
+    now = datetime.now(tz=timezone.utc).isoformat()
+
+    result = db.alerts.update_one(
+        {"_id": obj_id, "status": "OPEN"},
+        {"$set": {"status": "ACKNOWLEDGED", "acknowledged_by": user, "acknowledged_at": now}},
+    )
+    if result.modified_count == 0:
+        return jsonify({"error": "Alert not found or already acknowledged"}), 404
+
+    write_audit_log("alert.acknowledged", user, {"alert_id": alert_id})
+    return jsonify({"message": "Alert acknowledged", "acknowledged_by": user}), 200
+
+
+# ─── Audit Log ────────────────────────────────────────────────────────────────
+@app.route("/api/audit", methods=["GET"])
+@jwt_required()
+def get_audit_log():
+    """
+    Retrieve recent audit log entries (admin only).
+    ---
+    tags:
+      - Admin
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: List of audit entries
+      403:
+        description: Forbidden
+    """
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    limit = min(int(request.args.get("limit", 100)), 500)
+    entries = list(
+        db.audit_logs.find({}, {"_id": 0}).sort("timestamp", DESCENDING).limit(limit)
+    )
+    return jsonify(entries), 200
+
+
+# ─── Health Checks ────────────────────────────────────────────────────────────
+@app.route("/health")
+def health():
+    """
+    Basic liveness check.
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Service is alive
+    """
+    return jsonify({
+        "status": "ok",
+        "version": "2.0.0",
+        "time": datetime.now(tz=timezone.utc).isoformat(),
+    }), 200
+
+
+@app.route("/health/live")
+def health_live():
+    """Kubernetes liveness probe."""
+    return jsonify({"status": "alive"}), 200
+
+
+@app.route("/health/ready")
+def health_ready():
+    """
+    Kubernetes readiness probe — checks DB and Redis.
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Service is ready
+      503:
+        description: Dependency not ready
+    """
+    checks = {"db": False, "redis": False}
+    try:
+        mongo_client.admin.command("ping")
+        checks["db"] = True
+    except Exception:
+        pass
+    try:
+        redis_client.ping()
+        checks["redis"] = True
+    except Exception:
+        pass
+
+    ready = all(checks.values())
+    return jsonify({"status": "ready" if ready else "not_ready", "checks": checks}), 200 if ready else 503
+
+
+@app.route("/health/detail")
+def health_detail():
+    """
+    Detailed health: DB + Redis status + last telemetry timestamp.
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Detailed health info
+    """
+    checks = {}
+    try:
+        mongo_client.admin.command("ping")
+        checks["mongodb"] = "ok"
+    except Exception as e:
+        checks["mongodb"] = str(e)
+
+    try:
+        redis_client.ping()
+        checks["redis"] = "ok"
+    except Exception as e:
+        checks["redis"] = str(e)
+
+    last_tel = db.telemetry.find_one({}, {"_id": 0, "timestamp": 1}, sort=[("timestamp", DESCENDING)])
+    checks["last_telemetry"] = last_tel["timestamp"] if last_tel else None
+
+    return jsonify({
+        "status": "ok" if all(v == "ok" for k, v in checks.items() if k != "last_telemetry") else "degraded",
+        "version": "2.0.0",
+        "checks": checks,
+    }), 200
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
