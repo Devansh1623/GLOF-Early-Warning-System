@@ -1,31 +1,4 @@
 services:
-  mongodb:
-    image: mongo:7
-    container_name: glof_mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: glof_db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: glof_redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   backend:
     build:
@@ -35,17 +8,32 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    env_file:
+      - ./backend/.env
     environment:
-      - MONGO_URI=mongodb://mongodb:27017/glof_db
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - MONGO_URI=mongodb+srv://GLOF:GLOF12345@cluster0.k0lwbmf.mongodb.net/glof_db?appName=Cluster0
+      - REDIS_URL=rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-glof_himalaya_secret_2024}
       - FLASK_ENV=${FLASK_ENV:-production}
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - RESEND_API_KEY=re_apqkKThT_NQpndwxmopgUBazsdHXT4tE1
+      - RESEND_FROM_EMAIL=GLOFWatch <onboarding@resend.dev>
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: glof_worker
+    restart: unless-stopped
+    command: ["python", "-m", "celery", "-A", "celery_app.celery_app", "worker", "-Q", "notifications", "--loglevel=info"]
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGO_URI=mongodb+srv://GLOF:GLOF12345@cluster0.k0lwbmf.mongodb.net/glof_db?appName=Cluster0
+      - REDIS_URL=rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-glof_himalaya_secret_2024}
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - RESEND_API_KEY=re_apqkKThT_NQpndwxmopgUBazsdHXT4tE1
+      - RESEND_FROM_EMAIL=GLOFWatch <onboarding@resend.dev>
 
   simulator:
     build:
@@ -71,6 +59,3 @@ services:
       - "3000:80"
     depends_on:
       - backend
-
-volumes:
-  mongo_data:

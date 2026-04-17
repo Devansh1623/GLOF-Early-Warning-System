@@ -1,0 +1,84 @@
+services:
+
+  # ── Backend API (Flask / Gunicorn) ──────────────────────────────────────────
+  - type: web
+    name: glof-backend
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
+    healthCheckPath: /health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: JWT_SECRET_KEY
+        sync: false                # set manually in Render dashboard
+      - key: MONGO_URI
+        sync: false                # set manually in Render dashboard
+      - key: RESEND_API_KEY
+        sync: false                # set manually in Render dashboard
+      - key: RESEND_FROM_EMAIL
+        value: "GLOFWatch <onboarding@resend.dev>"
+      - key: REDIS_URL
+        value: "rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379"
+      - key: CORS_ORIGINS
+        value: "https://glof-frontend.onrender.com"
+
+  # ── Celery Worker (email / notifications) ────────────────────────────────────
+  - type: worker
+    name: glof-worker
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && python -m celery -A celery_app.celery_app worker -Q notifications --loglevel=info --concurrency=1
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: "GLOFWatch <onboarding@resend.dev>"
+      - key: REDIS_URL
+        value: "rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379"
+
+  # ── Frontend (React Static Site) ─────────────────────────────────────────────
+  - type: web
+    name: glof-frontend
+    runtime: static
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: REACT_APP_API_URL
+        value: "https://glof-backend.onrender.com"
+
+  # ── Telemetry Simulator (background worker) ───────────────────────────────────
+  - type: worker
+    name: glof-simulator
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: cd simulator && pip install -r requirements.txt
+    startCommand: cd simulator && python mock_telemetry.py
+    envVars:
+      - key: BACKEND_URL
+        value: "https://glof-backend.onrender.com"
+      - key: INTERVAL_SECONDS
+        value: "10"
