@@ -32,6 +32,7 @@ from prometheus_client import Counter, Gauge
 from pymongo import MongoClient, DESCENDING
 from bson import ObjectId
 import redis
+from dotenv import load_dotenv
 
 from routes.auth import auth_bp, init_auth
 from routes.data import lakes_bp, events_bp, alerts_bp, init_lakes, init_events, init_alerts
@@ -39,6 +40,12 @@ from models.seed import seed_database
 from core.risk_engine import calculate_risk, should_alert
 from core.schemas import TelemetrySchema, validate_json
 from core.logger import telemetry_log, alert_log, audit_log, get_logger
+from core.middleware import register_security_headers, register_error_handlers
+from core.db_indexes import ensure_indexes
+from tasks import enqueue_email_jobs
+
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv()
 
 app_log = get_logger("glof.app")
 
@@ -55,20 +62,22 @@ app.config["SWAGGER"] = {
 }
 swagger = Swagger(app)
 
-# JWT
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "change-me-in-prod")
+# JWT — fail on startup in production if secret is not set
+_jwt_secret = os.environ.get("JWT_SECRET_KEY", "change-me-in-prod")
+if os.environ.get("FLASK_ENV") == "production" and _jwt_secret == "change-me-in-prod":
+    raise RuntimeError("JWT_SECRET_KEY must be set in production!")
+app.config["JWT_SECRET_KEY"] = _jwt_secret
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 jwt = JWTManager(app)
 
-# Rate Limiter (uses Redis when available, memory fallback)
-REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+# Rate Limiter — uses REDIS_URL (works for both Upstash rediss:// and local redis://)
+_redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     default_limits=["200 per minute"],
-    storage_uri=f"redis://{REDIS_HOST}:{REDIS_PORT}",
+    storage_uri=_redis_url,
 )
 
 # Prometheus Metrics
@@ -92,6 +101,7 @@ redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=Tr
 
 # Sensor HMAC key (IoT authentication)
 SENSOR_API_KEY = os.environ.get("SENSOR_API_KEY", "glof-sensor-secret-key-2024")
+ALERT_COOLDOWN_SECONDS = int(os.environ.get("ALERT_COOLDOWN_SECONDS", 900))
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -118,6 +128,15 @@ def write_audit_log(action: str, actor: str, details: dict = None):
     audit_log.info(action, extra={"user": actor, **{k: v for k, v in (details or {}).items() if isinstance(v, (str, int, float))}})
 
 
+def is_alert_suppressed(lake_id: str, alert_type: str) -> bool:
+    """Suppress duplicate alerts for the same lake/type inside the cooldown window."""
+    cooldown_key = f"alert_cooldown:{lake_id}:{alert_type.lower()}"
+    if redis_client.get(cooldown_key):
+        return True
+    redis_client.setex(cooldown_key, ALERT_COOLDOWN_SECONDS, "1")
+    return False
+
+
 def create_demo_users(database):
     """Create default demo accounts if they don't exist."""
     import bcrypt
@@ -131,13 +150,21 @@ def create_demo_users(database):
             database.users.insert_one({
                 "email": u["email"], "name": u["name"], "role": u["role"],
                 "password": hashed, "created_at": datetime.now(tz=timezone.utc),
+                "alert_preferences": {
+                    "warnings_enabled": True,
+                    "emergencies_enabled": True,
+                    "email_enabled": True,
+                },
             })
             app_log.info(f"Created demo user: {u['email']}")
 
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
+ensure_indexes(db)
 seed_database(db)
 create_demo_users(db)
+register_security_headers(app)
+register_error_handlers(app)
 
 # Register blueprints
 app.register_blueprint(init_auth(db), url_prefix="/api/auth")
@@ -240,6 +267,7 @@ def receive_telemetry():
 
     # ── Alert ─────────────────────────────────────────────────────────────────
     if alert_info["alert"]:
+        alert_suppressed = is_alert_suppressed(lake_id, alert_info["type"])
         alert_doc = {
             "lake_id": lake_id,
             "lake_name": data["lake_name"],
@@ -251,13 +279,35 @@ def receive_telemetry():
             "status": "OPEN",            # State-machine field
             "resolved": False,
             "is_test": False,
+            "cooldown_suppressed": alert_suppressed,
         }
-        db.alerts.insert_one(alert_doc)
-        ALERT_COUNTER.labels(level=risk["level"]).inc()
-        alert_log.warning(
-            f"Alert fired: {alert_info['type']}",
-            extra={"lake_id": lake_id, "risk_score": risk["score"], "alert_type": alert_info["type"]},
-        )
+        if not alert_suppressed:
+            db.alerts.insert_one(alert_doc)
+            ALERT_COUNTER.labels(level=risk["level"]).inc()
+            alert_log.warning(
+                f"Alert fired: {alert_info['type']}",
+                extra={"lake_id": lake_id, "risk_score": risk["score"], "alert_type": alert_info["type"]},
+            )
+
+            if risk["score"] > 90:
+                users = list(db.users.find({"alert_preferences.email_enabled": True, "email": {"$ne": ""}}, {"email": 1}))
+                email_subject = f"GLOFWatch Critical Alert: {data['lake_name']}"
+                email_text = (
+                    f"GLOFWatch ALERT: {data['lake_name']} risk score {risk['score']:.1f} "
+                    f"({risk['level']}). {alert_info['message']}"
+                )
+                queue_result = enqueue_email_jobs(
+                    users,
+                    email_subject,
+                    email_text,
+                    metadata={"kind": "risk_alert", "lake_id": lake_id, "risk_score": risk["score"]},
+                )
+                app_log.info(
+                    "Email jobs queued",
+                    extra={"lake_id": lake_id, "queued": queue_result["queued"], "skipped": len(queue_result["skipped"])},
+                )
+        else:
+            alert_info = {**alert_info, "suppressed": True, "cooldown_seconds": ALERT_COOLDOWN_SECONDS}
 
     # ── Redis pub/sub ─────────────────────────────────────────────────────────
     payload = {**tel_doc, "alert": alert_info}
@@ -540,6 +590,38 @@ def get_audit_log():
         db.audit_logs.find({}, {"_id": 0}).sort("timestamp", DESCENDING).limit(limit)
     )
     return jsonify(entries), 200
+
+
+# ─── ML Model Status ──────────────────────────────────────────────────────────
+@app.route("/api/ml/status", methods=["GET"])
+@jwt_required()
+def ml_status():
+    """
+    Returns the status and metadata of the loaded ML model.
+    ---
+    tags:
+      - ML
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: ML model info
+    """
+    from core.risk_engine import _ml_ready, _ml_features, _ml_classes
+    import json as _json
+    models_dir = os.path.join(os.path.dirname(__file__), "models")
+    meta_path = os.path.join(models_dir, "model_meta.json")
+    meta = {}
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            meta = _json.load(f)
+    return jsonify({
+        "ml_ready": _ml_ready,
+        "features": _ml_features,
+        "classes": _ml_classes,
+        "meta": meta,
+        "blend_ratio": float(os.environ.get("ML_BLEND_RATIO", 0.4)),
+    }), 200
 
 
 # ─── Health Checks ────────────────────────────────────────────────────────────
