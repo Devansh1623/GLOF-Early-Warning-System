@@ -219,16 +219,6 @@ def root():
     return jsonify({"service": "GLOF Early Warning System API", "version": "2.1.0", "status": "ok"})
 
 
-@app.route("/health")
-def health():
-    """Health check endpoint used by Render and the telemetry simulator."""
-    try:
-        db.command("ping")
-        db_status = "ok"
-    except Exception:
-        db_status = "degraded"
-    return jsonify({"status": "ok", "db": db_status, "version": "2.1.0"}), 200
-
 
 # ─── Telemetry Endpoint ────────────────────────────────────────────────────────
 @app.route("/api/telemetry", methods=["POST"])
