@@ -1,21 +1,18 @@
-/**
- * Shared helpers: risk colors, badge classes, auth-fetch wrapper, formatters.
- */
+import { fetchWithFailover } from './api';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const CACHE_PREFIX = 'glof_cache_';
 
-/* Risk level → hex color */
 export function riskColor(level) {
   switch ((level || '').toLowerCase()) {
-    case 'critical': return '#991b1b';
-    case 'high':     return '#dc2626';
-    case 'moderate': return '#d97706';
-    case 'low':      return '#16a34a';
-    default:         return '#4a5f82';
+    case 'critical': return '#FFB4AB';   /* --risk-critical  */
+    case 'high':     return '#F4B66A';   /* --risk-high      */
+    case 'moderate': return '#B0C7F1';   /* --risk-moderate  */
+    case 'low':      return '#9ECFD1';   /* --risk-low       */
+    default:         return '#8A9292';   /* --outline        */
   }
 }
 
-/* Risk level → CSS badge class */
+
 export function riskBadgeClass(level) {
   switch ((level || '').toLowerCase()) {
     case 'critical': return 'badge badge-critical';
@@ -26,13 +23,13 @@ export function riskBadgeClass(level) {
   }
 }
 
-/* Format number with suffix, handling nullish */
+
 export function fmt(val, suffix = '', decimals = 1) {
-  if (val === null || val === undefined) return '—';
+  if (val === null || val === undefined) return '--';
   return Number(val).toFixed(decimals) + suffix;
 }
 
-/* Fetch wrapper that injects JWT Authorization header */
+
 export function authFetch(path, options = {}) {
   const token = localStorage.getItem('glof_token');
   const headers = {
@@ -40,12 +37,12 @@ export function authFetch(path, options = {}) {
     ...(options.headers || {}),
   };
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
-  return fetch(`${API}${path}`, { ...options, headers });
+  return fetchWithFailover(path, { ...options, headers });
 }
 
-/* Relative time string */
+
 export function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -57,4 +54,26 @@ export function timeAgo(dateStr) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+
+export function writeCache(key, value) {
+  localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({
+    savedAt: Date.now(),
+    value,
+  }));
+}
+
+
+export function readFreshCache(key, maxAgeMinutes = 30) {
+  const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const ageMs = Date.now() - parsed.savedAt;
+    if (ageMs > maxAgeMinutes * 60 * 1000) return null;
+    return parsed.value;
+  } catch {
+    return null;
+  }
 }

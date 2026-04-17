@@ -1,249 +1,338 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  LineChart, Line, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine
+  LineChart, AreaChart, Area, Line, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts';
+import { authFetch, readFreshCache, writeCache, riskColor, riskBadgeClass, fmt } from '../utils/helpers';
 import { useSSE } from '../hooks/useSSE';
-import { riskColor, riskBadgeClass, fmt, authFetch } from '../utils/helpers';
+import { useI18n } from '../utils/I18nContext';
 
-export default function ChartsPage() {
-  const { lakeMap, history } = useSSE();
-  const [lakes, setLakes]     = useState([]);
-  const [selected, setSelected] = useState('GL001');
-
-  useEffect(() => {
-    authFetch('/api/lakes/').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) {
-        setLakes(data);
-        if (data.length) setSelected(data[0].id);
-      }
-    });
-  }, []);
-
-  const lake     = lakes.find(l => l.id === selected);
-  const live     = lakeMap[selected];
-  const series   = history[selected] || [];
-  const level    = live?.risk_level ?? lake?.current_risk_level ?? 'Low';
-  const color    = riskColor(level);
-
-  const xTick = { fill: '#3d6080', fontSize: 10 };
-  const yTick = { fill: '#3d6080', fontSize: 10 };
-
-  return (
-    <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto' }}
-         className="animate-fade">
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <h2 className="page-title">Live Telemetry Charts</h2>
-          <p className="page-subtitle">Real-time sensor readings · last 60 data points per lake</p>
-        </div>
-        {live && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12,
-            color: 'var(--text-secondary)', background: 'var(--bg-card)',
-            border: '1px solid var(--border)', borderRadius: 20, padding: '5px 12px' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a',
-              boxShadow: '0 0 6px rgba(22,163,74,0.7)' }} />
-            {live.lake_name} — updated just now
-          </div>
-        )}
-      </div>
-
-      {/* Lake selector */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {lakes.map(l => {
-          const lv = lakeMap[l.id]?.risk_level ?? l.current_risk_level ?? 'Low';
-          const active = l.id === selected;
-          return (
-            <button key={l.id} onClick={() => setSelected(l.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px',
-                border: `1px solid ${active ? riskColor(lv) : 'var(--border)'}`,
-                borderRadius: 8, cursor: 'pointer', fontFamily: 'var(--font-main)', fontSize: 12,
-                transition: 'all 0.15s',
-                background: active ? `${riskColor(lv)}18` : 'var(--bg-card)',
-                color: active ? riskColor(lv) : 'var(--text-secondary)',
-              }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: riskColor(lv), flexShrink: 0 }} />
-              <span style={{ fontWeight: 500 }}>{l.name.replace(' Lake','').replace(' Glacier','')}</span>
-              <span className={riskBadgeClass(lv)} style={{ fontSize: 9, padding: '1px 6px' }}>{lv}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Current readings */}
-      {lake && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-          <ReadingCard label="Temperature" val={fmt(live?.temperature, '°C')} sub="2m above surface" color="#60a5fa" />
-          <ReadingCard label="Precipitation" val={fmt(live?.rainfall, ' mm/day')} sub="Estimated daily" color="#818cf8" />
-          <ReadingCard label="Water Level Rise" val={fmt(live?.water_level_rise, ' cm')} sub="Above reference" color="#34d399" />
-          <ReadingCard label="Risk Score" val={fmt(live?.risk_score, '', 0)} sub={level} color={color} highlight />
-          <div className="card" style={{ borderTop: `2px solid ${color}`, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Breakdown</div>
-            {live?.breakdown && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                <BreakBar label="Temp" val={live.breakdown.temperature_contribution} color="#60a5fa" />
-                <BreakBar label="Rain" val={live.breakdown.rainfall_contribution} color="#818cf8" />
-                <BreakBar label="Level" val={live.breakdown.water_level_contribution} color="#34d399" />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Charts */}
-      {series.length > 1 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <ChartCard title="Risk Score" color={color}>
-            <AreaChart data={series}>
-              <defs>
-                <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={color} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={color} stopOpacity={0.0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#1e3048" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="t" tick={xTick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis domain={[0, 100]} tick={yTick} tickLine={false} axisLine={false} width={32} />
-              <Tooltip content={<CustomTooltip />} />
-              {[30, 60, 80].map(v => (
-                <ReferenceLine key={v} y={v} stroke={riskColor(
-                  v === 30 ? 'Low' : v === 60 ? 'Moderate' : 'High'
-                )} strokeDasharray="4 4" strokeOpacity={0.4} />
-              ))}
-              <Area type="monotone" dataKey="score" stroke={color}
-                fill="url(#scoreGrad)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ChartCard>
-
-          <ChartCard title="Temperature (°C)" color="#60a5fa">
-            <LineChart data={series}>
-              <CartesianGrid stroke="#1e3048" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="t" tick={xTick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={yTick} tickLine={false} axisLine={false} width={32} />
-              <Tooltip content={<CustomTooltip unit="°C" />} />
-              <Line type="monotone" dataKey="temperature" stroke="#60a5fa" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ChartCard>
-
-          <ChartCard title="Precipitation (mm/day)" color="#818cf8">
-            <AreaChart data={series}>
-              <defs>
-                <linearGradient id="rainGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#818cf8" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#818cf8" stopOpacity={0.0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#1e3048" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="t" tick={xTick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={yTick} tickLine={false} axisLine={false} width={32} />
-              <Tooltip content={<CustomTooltip unit=" mm/d" />} />
-              <Area type="monotone" dataKey="rainfall" stroke="#818cf8" fill="url(#rainGrad)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ChartCard>
-
-          <ChartCard title="Water Level Rise (cm)" color="#34d399">
-            <AreaChart data={series}>
-              <defs>
-                <linearGradient id="wlGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#34d399" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#34d399" stopOpacity={0.0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#1e3048" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="t" tick={xTick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={yTick} tickLine={false} axisLine={false} width={32} />
-              <Tooltip content={<CustomTooltip unit=" cm" />} />
-              <Area type="monotone" dataKey="water_level" stroke="#34d399" fill="url(#wlGrad)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ChartCard>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--text-muted)',
-          fontSize: 13, padding: '40px 0', justifyContent: 'center' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#1d8fe8',
-            animation: 'pulse 1.5s ease-in-out infinite' }} />
-          Waiting for telemetry from {lake?.name || 'this lake'}…
-        </div>
-      )}
-
-      {/* Lake info footer */}
-      {lake && (
-        <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px 20px', padding: '16px 20px' }}>
-          <InfoItem label="Location" val={`${lake.lat}°N, ${lake.lon}°E`} />
-          <InfoItem label="Area" val={`${lake.area_ha} ha`} />
-          <InfoItem label="Elevation" val={`${lake.elevation_m} m asl`} />
-          <InfoItem label="Dam Type" val={lake.dam_type} />
-          <InfoItem label="River Basin" val={lake.river_basin} />
-          <InfoItem label="CWC Monitored" val={lake.cwc_monitoring ? 'Yes' : 'No'} />
-          <div style={{ gridColumn: '1 / -1' }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Field Notes </span>
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{lake.notes}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Sub-components ── */
-function ReadingCard({ label, val, sub, color, highlight }) {
-  return (
-    <div className="card" style={{ borderTop: `2px solid ${color}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
-      <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em', fontFamily: 'var(--font-mono)', lineHeight: 1.1, color: highlight ? color : 'var(--text-primary)' }}>{val}</span>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sub}</span>
-    </div>
-  );
-}
-
-function BreakBar({ label, val, color }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
-        <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-        <span style={{ color, fontFamily: 'var(--font-mono)' }}>{val?.toFixed(1)}</span>
-      </div>
-      <div style={{ height: 3, background: 'var(--bg-secondary)', borderRadius: 2 }}>
-        <div style={{ height: '100%', width: `${Math.min(val || 0, 35) / 35 * 100}%`,
-          background: color, borderRadius: 2, transition: 'width 0.5s' }} />
-      </div>
-    </div>
-  );
-}
-
-function ChartCard({ title, color, children }) {
-  return (
-    <div className="card" style={{ padding: '16px 16px 10px' }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, display: 'flex', alignItems: 'center' }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', marginRight: 7 }} />
-        {title}
-      </div>
-      <ResponsiveContainer width="100%" height={160}>{children}</ResponsiveContainer>
-    </div>
-  );
-}
-
-function CustomTooltip({ active, payload, label, unit = '' }) {
+/* Glassmorphism tooltip */
+function GlacialTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color, fontSize: 13, fontFamily: 'var(--font-mono)' }}>
-          {p.value?.toFixed(1)}{unit}
+    <div style={{
+      background: 'rgba(19, 32, 50, 0.94)',
+      backdropFilter: 'blur(20px)',
+      border: '1px solid var(--ghost-border)',
+      borderRadius: 'var(--radius-xl)',
+      padding: '10px 14px',
+      boxShadow: 'var(--shadow-float)',
+    }}>
+      <div style={{
+        fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+        color: 'var(--outline)', letterSpacing: '0.1em',
+        textTransform: 'uppercase', marginBottom: 6,
+      }}>{label}</div>
+      {payload.map(p => (
+        <div key={p.dataKey} style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3,
+        }}>
+          <span style={{ width: 8, height: 2, background: p.color, borderRadius: 2, display: 'inline-block' }} />
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+            color: 'var(--on-surface)', fontWeight: 600, letterSpacing: '-0.01em',
+          }}>
+            {typeof p.value === 'number' ? p.value.toFixed(2) : p.value}
+          </span>
+          <span style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.6875rem', color: 'var(--on-surface-variant)',
+          }}>{p.name}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function InfoItem({ label, val }) {
+export default function ChartsPage() {
+  const { lakeMap } = useSSE();
+  const { t } = useI18n();
+  const [lakes, setLakes]         = useState(readFreshCache('charts_lakes', 60) || []);
+  const [selectedLake, setSelected] = useState(null);
+  const [history, setHistory]     = useState([]);
+  const [loadingHist, setLoading] = useState(false);
+  const [latest, setLatest]       = useState(null);
+
+  useEffect(() => {
+    authFetch('/api/lakes/').then(r => r.json()).then(data => {
+      if (Array.isArray(data) && data.length) {
+        // Sort lakes by ID (or name) to stabilize UI between refreshes
+        const sortedData = data.sort((a, b) => a.id.localeCompare(b.id));
+        setLakes(sortedData);
+        writeCache('charts_lakes', sortedData);
+        if (!selectedLake) setSelected(sortedData[0]);
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!selectedLake) return;
+    setLoading(true);
+    authFetch(`/api/lakes/${selectedLake.id}/telemetry?limit=100`)
+      .then(r => r.json())
+      .then(data => {
+        setHistory(data.data.map(d => ({
+          time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          water_level: d.water_level_rise ?? d.water_level_m ?? 0,
+          risk_score:  d.risk_score ?? 0,
+          temperature: d.temperature ?? d.temperature_c ?? 0,
+        })).reverse());
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [selectedLake]);
+
+  useEffect(() => {
+    if (!selectedLake) return;
+    const live = lakeMap[selectedLake.id];
+    if (live) setLatest(live);
+  }, [lakeMap, selectedLake]);
+
+  const risk  = latest?.risk_level || selectedLake?.current_risk_level || 'Low';
+  const score = latest?.risk_score  ?? selectedLake?.current_risk_score ?? 0;
+
+  const chartCommon = {
+    margin: { top: 8, right: 8, bottom: 0, left: 0 },
+  };
+  const axisStyle = {
+    fontFamily: 'var(--font-mono)', fontSize: 10, fill: 'var(--outline)',
+  };
+
   return (
-    <div>
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{val}</div>
+    <div style={{ padding: '28px 32px' }} className="animate-fade">
+      {/* ── Header ── */}
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">{t.telemetry || 'Telemetry'}</h2>
+          <p className="page-subtitle">Live sensor readings from monitored basins.</p>
+        </div>
+        <span className={riskBadgeClass(risk)} style={{ alignSelf: 'center' }}>{risk}</span>
+      </div>
+
+      {/* ── Lake selector chips ── */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20,
+        padding: '14px 16px', background: 'var(--surface-low)',
+        borderRadius: 'var(--radius-2xl)',
+      }}>
+        {lakes.map(lake => {
+          const isSelected = lake.id === selectedLake?.id;
+          return (
+            <button
+              key={lake.id}
+              onClick={() => setSelected(lake)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 999,
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-display)',
+                fontSize: '0.75rem', fontWeight: 500,
+                background: isSelected
+                  ? 'rgba(196, 247, 249, 0.18)'
+                  : 'var(--surface-high)',
+                color: isSelected ? 'var(--primary)' : 'var(--on-surface-variant)',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              {lake.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Reading cards ── */}
+      {selectedLake && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+          {[
+            {
+              label: 'Water Level',
+              value: fmt(latest?.water_level_m ?? latest?.water_level_rise ?? selectedLake.current_water_level, ' m'),
+              sub: selectedLake.name,
+              accent: 'var(--primary)',
+            },
+            {
+              label: 'Risk Score',
+              value: fmt(score, '', 1),
+              sub: risk,
+              accent: riskColor(risk),
+            },
+            {
+              label: 'Temperature',
+              value: fmt(latest?.temperature_c ?? latest?.temperature, '°C'),
+              sub: 'Surface sensor',
+              accent: 'var(--secondary)',
+            },
+            {
+              label: 'Seismic',
+              value: fmt(latest?.seismic_activity ?? latest?.seismic, ' g', 3),
+              sub: 'Acceleration',
+              accent: 'var(--tertiary)',
+            },
+          ].map(card => (
+            <div key={card.label} style={{
+              padding: '16px 18px',
+
+              backgroundImage: `linear-gradient(180deg, ${card.accent}12 0%, transparent 5%), linear-gradient(var(--surface-default), var(--surface-default))`,
+              borderRadius: 'var(--radius-2xl)',
+            }}>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+                color: 'var(--outline)', letterSpacing: '0.1em',
+                textTransform: 'uppercase', marginBottom: 6,
+              }}>{card.label}</div>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: '1.625rem',
+                fontWeight: 600, color: card.accent, letterSpacing: '-0.03em', lineHeight: 1,
+              }}>{card.value}</div>
+              <div style={{
+                fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+                color: 'var(--on-surface-variant)', marginTop: 5,
+              }}>{card.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Charts ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {/* Water Level */}
+        <div style={{
+          padding: '20px', background: 'var(--surface-default)',
+          borderRadius: 'var(--radius-2xl)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontSize: '0.875rem',
+            fontWeight: 600, color: 'var(--on-surface)', marginBottom: 4,
+          }}>Water Level</div>
+          <div style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+            color: 'var(--on-surface-variant)', marginBottom: 16,
+          }}>Basin depth — 100 records</div>
+          {loadingHist ? (
+            <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="dot-live" />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={history} {...chartCommon}>
+                <defs>
+                  <linearGradient id="wlGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#C4F7F9" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#C4F7F9" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(64,72,72,0.15)" vertical={false} />
+                <XAxis dataKey="time" tick={axisStyle} tickLine={false} axisLine={false} />
+                <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+                <Tooltip content={<GlacialTooltip />} />
+                <Area type="monotone" dataKey="water_level" name="Level (m)"
+                  stroke="#C4F7F9" strokeWidth={1.5} fill="url(#wlGrad)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Risk Score */}
+        <div style={{
+          padding: '20px', background: 'var(--surface-default)',
+          borderRadius: 'var(--radius-2xl)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontSize: '0.875rem',
+            fontWeight: 600, color: 'var(--on-surface)', marginBottom: 4,
+          }}>Risk Score Index</div>
+          <div style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+            color: 'var(--on-surface-variant)', marginBottom: 16,
+          }}>ML risk 0–100 per reading</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={history} {...chartCommon}>
+              <CartesianGrid stroke="rgba(64,72,72,0.15)" vertical={false} />
+              <XAxis dataKey="time" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis domain={[0, 100]} tick={axisStyle} tickLine={false} axisLine={false} />
+              <Tooltip content={<GlacialTooltip />} />
+              <ReferenceLine y={80} stroke="rgba(255,180,171,0.4)" strokeDasharray="4 4" />
+              <ReferenceLine y={60} stroke="rgba(244,182,106,0.3)" strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="risk_score" name="Risk"
+                stroke="#B0C7F1" strokeWidth={1.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Temperature */}
+        <div style={{
+          padding: '20px', background: 'var(--surface-default)',
+          borderRadius: 'var(--radius-2xl)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontSize: '0.875rem',
+            fontWeight: 600, color: 'var(--on-surface)', marginBottom: 4,
+          }}>Surface Temperature</div>
+          <div style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+            color: 'var(--on-surface-variant)', marginBottom: 16,
+          }}>Celsius · surface sensor</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={history} {...chartCommon}>
+              <defs>
+                <linearGradient id="tmpGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#B0C7F1" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#B0C7F1" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="rgba(64,72,72,0.15)" vertical={false} />
+              <XAxis dataKey="time" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+              <Tooltip content={<GlacialTooltip />} />
+              <Area type="monotone" dataKey="temperature" name="°C"
+                stroke="#B0C7F1" strokeWidth={1.5} fill="url(#tmpGrad)" dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Multi-metric */}
+        <div style={{
+          padding: '20px', background: 'var(--surface-default)',
+          borderRadius: 'var(--radius-2xl)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontSize: '0.875rem',
+            fontWeight: 600, color: 'var(--on-surface)', marginBottom: 4,
+          }}>Multi-factor Overlay</div>
+          <div style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+            color: 'var(--on-surface-variant)', marginBottom: 16,
+          }}>Level · Score overlaid</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={history} {...chartCommon}>
+              <CartesianGrid stroke="rgba(64,72,72,0.15)" vertical={false} />
+              <XAxis dataKey="time" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="l" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="r" orientation="right" domain={[0, 100]} tick={axisStyle} tickLine={false} axisLine={false} />
+              <Tooltip content={<GlacialTooltip />} />
+              <Line yAxisId="l" type="monotone" dataKey="water_level" name="Level (m)"
+                stroke="#C4F7F9" strokeWidth={1.5} dot={false} />
+              <Line yAxisId="r" type="monotone" dataKey="risk_score" name="Risk"
+                stroke="#FFB4AB" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ── Data attribution ── */}
+      <div style={{
+        marginTop: 16, padding: '12px 18px',
+        background: 'var(--surface-low)', borderRadius: 'var(--radius-xl)',
+        display: 'flex', gap: 24, alignItems: 'center',
+        fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+        color: 'var(--outline)', letterSpacing: '0.08em', textTransform: 'uppercase',
+      }}>
+        <span>Lake: {selectedLake?.name || '—'}</span>
+        <span>Elev: {selectedLake?.elevation_m || '—'} m</span>
+        <span>Area: {selectedLake?.area_ha || '—'} ha</span>
+        <span>State: {selectedLake?.state || '—'}</span>
+      </div>
     </div>
   );
 }

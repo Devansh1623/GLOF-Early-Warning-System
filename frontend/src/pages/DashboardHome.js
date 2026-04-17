@@ -1,137 +1,228 @@
 import React, { useEffect, useState } from 'react';
 import { useSSE } from '../hooks/useSSE';
-import { riskColor, riskBadgeClass, authFetch, timeAgo } from '../utils/helpers';
+import { riskColor, riskBadgeClass, authFetch, readFreshCache, timeAgo, writeCache } from '../utils/helpers';
 import { Link } from 'react-router-dom';
+import { useI18n } from '../utils/I18nContext';
 
 export default function DashboardHome() {
-  const { lakeMap, connected } = useSSE();
-  const [summary, setSummary] = useState(null);
-  const [lakes, setLakes]     = useState([]);
+  const { lakeMap, connected, offlineMode } = useSSE();
+  const { t } = useI18n();
+  const [summary, setSummary] = useState(readFreshCache('dashboard_summary', 30));
+  const [lakes, setLakes]     = useState(readFreshCache('dashboard_lakes', 30) || []);
 
   useEffect(() => {
-    authFetch('/api/dashboard/summary').then(r => r.json()).then(setSummary).catch(() => {});
+    authFetch('/api/dashboard/summary').then(r => r.json()).then((data) => {
+      setSummary(data);
+      writeCache('dashboard_summary', data);
+    }).catch(() => {});
     authFetch('/api/lakes/').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setLakes(data);
+      if (Array.isArray(data)) {
+        setLakes(data);
+        writeCache('dashboard_lakes', data);
+      }
     }).catch(() => {});
   }, []);
 
+  // Stitch stat card definitions — tonal backgrounds, no gradient borders
   const stats = [
-    { label: 'Total Lakes', value: summary?.total_lakes ?? '—', color: '#3b82f6', gradient: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.03))', sub: 'CWC/NRSC Inventory', icon: '🏔️' },
-    { label: 'Critical', value: summary?.critical_lakes ?? '—', color: '#dc2626', gradient: 'linear-gradient(135deg, rgba(220,38,38,0.12), rgba(220,38,38,0.03))', sub: 'Immediate action', icon: '🚨' },
-    { label: 'High Risk', value: summary?.high_risk_lakes ?? '—', color: '#f59e0b', gradient: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.03))', sub: 'Active monitoring', icon: '⚠️' },
-    { label: 'Active Alerts', value: summary?.active_alerts ?? '—', color: '#818cf8', gradient: 'linear-gradient(135deg, rgba(129,140,248,0.12), rgba(129,140,248,0.03))', sub: 'Unresolved', icon: '🔔' },
-    { label: 'GLOF Events', value: summary?.total_events ?? '—', color: '#34d399', gradient: 'linear-gradient(135deg, rgba(52,211,153,0.12), rgba(52,211,153,0.03))', sub: '2005–2023', icon: '📋' },
+    {
+      label: 'Total Lakes',
+      value: summary?.total_lakes ?? '—',
+      sub: 'CWC/NRSC Inventory',
+      accent: 'var(--primary)',
+      bg: 'rgba(196, 247, 249, 0.06)',
+      Icon: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M3 18l9-14 9 14H3z" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M6 18c0-3 3-5 6-5s6 2 6 5" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
+    {
+      label: 'Critical',
+      value: summary?.critical_lakes ?? '—',
+      sub: 'Immediate action',
+      accent: 'var(--risk-critical)',
+      bg: 'rgba(255, 180, 171, 0.06)',
+      Icon: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+          <line x1="12" y1="9" x2="12" y2="13" strokeLinecap="round"/>
+          <line x1="12" y1="17" x2="12.01" y2="17" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
+    {
+      label: 'High Risk',
+      value: summary?.high_risk_lakes ?? '—',
+      sub: 'Active monitoring',
+      accent: 'var(--risk-high)',
+      bg: 'rgba(244, 182, 106, 0.06)',
+      Icon: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" strokeLinecap="round" strokeLinejoin="round"/>
+          <polyline points="17 6 23 6 23 12" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+    },
+    {
+      label: 'Active Alerts',
+      value: summary?.active_alerts ?? '—',
+      sub: 'Unresolved',
+      accent: 'var(--secondary)',
+      bg: 'rgba(176, 199, 241, 0.06)',
+      Icon: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M13.7 21a2 2 0 0 1-3.4 0" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
+    {
+      label: 'GLOF Events',
+      value: summary?.total_events ?? '—',
+      sub: '2005–2023 record',
+      accent: 'var(--tertiary)',
+      bg: 'rgba(236, 237, 233, 0.04)',
+      Icon: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round"/>
+          <line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round"/>
+          <line x1="3" y1="10" x2="21" y2="10" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
   ];
 
-  // Count live risk levels
   const liveValues = Object.values(lakeMap);
   const liveCritical = liveValues.filter(l => l.risk_level === 'Critical').length;
   const liveHigh = liveValues.filter(l => l.risk_level === 'High').length;
 
   return (
     <div style={{ padding: '28px 32px' }} className="animate-fade">
-      {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-        marginBottom: 28,
-      }}>
+      {/* ── Header ── */}
+      <div className="page-header">
         <div>
-          <h2 style={{
-            fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em',
-            background: 'linear-gradient(135deg, #e8edf5, #8b9dc3)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>Dashboard</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Real-time GLOF monitoring · Indian Himalayan Region
-          </p>
+          <h2 className="page-title">{t.dashboard || 'Dashboard'}</h2>
+          <p className="page-subtitle">Real-time GLOF monitoring · Indian Himalayan Region</p>
         </div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          background: connected ? 'rgba(22, 163, 74, 0.06)' : 'rgba(220, 38, 38, 0.06)',
-          border: `1px solid ${connected ? 'rgba(22, 163, 74, 0.2)' : 'rgba(220, 38, 38, 0.2)'}`,
-          borderRadius: 20, padding: '7px 14px',
-        }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: connected ? '#16a34a' : '#dc2626',
-            boxShadow: connected ? '0 0 8px rgba(22,163,74,0.6)' : 'none',
-            animation: connected ? 'pulse 2s ease-in-out infinite' : 'none'
-          }} />
-          <span style={{ fontSize: 12, color: connected ? '#22c55e' : '#dc2626', fontWeight: 500 }}>
-            {connected ? 'Live stream active' : 'Connecting…'}
+        <div className={`status-chip ${connected ? 'connected' : 'disconnected'}`}>
+          <span className={connected ? 'dot-live' : 'dot-critical'} style={{ width: 7, height: 7 }} />
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', letterSpacing: '0.08em' }}>
+            {connected ? t.liveStreamActive || 'Live Stream' : t.connecting || 'Connecting…'}
           </span>
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
+      {offlineMode && (
+        <div className="badge badge-moderate" style={{ marginBottom: 18 }}>
+          {t.offlineCache || 'Offline — cached data'}
+        </div>
+      )}
+
+      {/* ── KPI Cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
         {stats.map(s => (
-          <div key={s.label} className="card" style={{
-            background: s.gradient, borderTop: `2px solid ${s.color}`,
-            padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 6,
+          <div key={s.label} style={{
+            padding: '18px 20px',
+            background: s.bg,
+            borderRadius: 'var(--radius-2xl)',
+            display: 'flex', flexDirection: 'column', gap: 5,
             position: 'relative', overflow: 'hidden',
+            /* Top accent stripe via pseudo — done with background gradient */
+            backgroundImage: `linear-gradient(180deg, ${s.accent}18 0%, transparent 5%), ${s.bg.replace(')', ', 1)')}`,
           }}>
+            {/* Icon */}
+            <div style={{
+              position: 'absolute', top: 14, right: 14,
+              color: s.accent, opacity: 0.6,
+            }}>
+              <s.Icon />
+            </div>
             <span style={{
-              position: 'absolute', top: 12, right: 14, fontSize: 20, opacity: 0.5,
-            }}>{s.icon}</span>
-            <span style={{
-              fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
-              textTransform: 'uppercase', letterSpacing: '0.08em',
+              fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+              fontWeight: 500, color: 'var(--on-surface-variant)',
+              textTransform: 'uppercase', letterSpacing: '0.1em',
             }}>{s.label}</span>
             <span style={{
-              fontSize: 32, fontWeight: 800, letterSpacing: '-0.04em',
-              fontFamily: 'var(--font-mono)', lineHeight: 1.1, color: s.color,
+              fontSize: '2.25rem', fontWeight: 700, letterSpacing: '-0.04em',
+              fontFamily: 'var(--font-mono)', lineHeight: 1, color: s.accent,
             }}>{s.value}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{s.sub}</span>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.6875rem', color: 'var(--outline)' }}>
+              {s.sub}
+            </span>
           </div>
         ))}
       </div>
 
-      {/* Live risk summary banner */}
+      {/* ── Live risk banner ── */}
       {(liveCritical > 0 || liveHigh > 0) && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18,
-          padding: '12px 18px', borderRadius: 10,
-          background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.08), rgba(153, 27, 27, 0.05))',
-          border: '1px solid rgba(220, 38, 38, 0.2)',
+          display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20,
+          padding: '12px 18px', borderRadius: 'var(--radius-xl)',
+          background: 'rgba(255, 180, 171, 0.05)',
+          border: '1px solid rgba(255, 180, 171, 0.18)',
         }}>
-          <span style={{ fontSize: 18 }}>⚡</span>
-          <span style={{ fontSize: 13, color: '#fca5a5', fontWeight: 500 }}>
-            Live telemetry: <strong>{liveCritical} critical</strong>{liveHigh > 0 && <>, <strong>{liveHigh} high risk</strong></>} lake{(liveCritical + liveHigh) > 1 ? 's' : ''} detected
+          <span className="dot-critical" style={{ flexShrink: 0 }} />
+          <span style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.8125rem',
+            color: 'var(--error)', fontWeight: 500,
+          }}>
+            Live telemetry:{' '}
+            <strong style={{ fontFamily: 'var(--font-mono)' }}>{liveCritical} critical</strong>
+            {liveHigh > 0 && <>, <strong style={{ fontFamily: 'var(--font-mono)' }}>{liveHigh} high risk</strong></>}
+            {' '}lake{(liveCritical + liveHigh) > 1 ? 's' : ''} detected
           </span>
           <Link to="/dashboard/alerts" style={{
-            marginLeft: 'auto', fontSize: 12, color: '#60a5fa', fontWeight: 600,
-          }}>View Alerts →</Link>
+            marginLeft: 'auto', fontFamily: 'var(--font-display)',
+            fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600,
+          }}>
+            View Alerts →
+          </Link>
         </div>
       )}
 
-      {/* Lakes table */}
-      <div className="card" style={{ padding: 0 }}>
+      {/* ── Lakes table ── */}
+      <div style={{
+        background: 'var(--surface-default)',
+        borderRadius: 'var(--radius-2xl)',
+        overflow: 'hidden',
+      }}>
+        {/* Table header row — tonal, no border-bottom */}
         <div style={{
-          padding: '16px 20px', borderBottom: '1px solid var(--border)',
+          padding: '16px 20px 14px',
+          background: 'var(--surface-low)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Monitored Lakes</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              Real-time risk levels · {Object.keys(lakeMap).length} lakes receiving SSE data
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: '0.9375rem',
+              fontWeight: 600, color: 'var(--on-surface)',
+            }}>Monitored Lakes</div>
+            <div style={{
+              fontFamily: 'var(--font-body)', fontSize: '0.75rem',
+              color: 'var(--on-surface-variant)', marginTop: 3,
+            }}>
+              Real-time risk · {Object.keys(lakeMap).length} lakes receiving SSE data
             </div>
           </div>
-          <Link to="/dashboard/map" className="btn btn-outline" style={{ fontSize: 11, padding: '6px 14px' }}>
-            🗺️ View Map
+          <Link to="/dashboard/map" className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '7px 14px' }}>
+            Basin Map →
           </Link>
         </div>
+
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th style={{ width: 50 }}></th>
+                <th style={{ width: 40 }}></th>
                 <th>Lake</th>
                 <th>State</th>
                 <th>Elevation</th>
                 <th>Area</th>
                 <th>Dam Type</th>
-                <th>Risk Score</th>
+                <th>Score</th>
                 <th>Risk Level</th>
                 <th>Status</th>
               </tr>
@@ -143,31 +234,33 @@ export default function DashboardHome() {
                 const score = live?.risk_score ?? lake.current_risk_score ?? 0;
                 const isLive = !!live;
                 return (
-                  <tr key={lake.id} style={{
-                    background: level === 'Critical' ? 'rgba(220,38,38,0.03)' : 'transparent',
-                  }}>
-                    <td style={{ textAlign: 'center' }}>
+                  <tr key={lake.id}>
+                    <td style={{ textAlign: 'center', padding: '13px 8px' }}>
                       <span style={{
-                        width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
+                        width: 8, height: 8, borderRadius: '50%',
+                        display: 'inline-block',
                         background: riskColor(level),
-                        boxShadow: (level === 'Critical' || level === 'High')
-                          ? `0 0 8px ${riskColor(level)}80` : 'none',
-                        animation: level === 'Critical' ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                        animation: level === 'Critical'
+                          ? 'criticalPulse 1.8s ease-in-out infinite'
+                          : level === 'High'
+                          ? 'riskPulse 2.5s ease-in-out infinite'
+                          : 'none',
                       }} />
                     </td>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      <Link to="/dashboard/charts" style={{ color: 'inherit', textDecoration: 'none' }}>
+                    <td style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--on-surface)', fontSize: '0.8125rem' }}>
+                      <Link to="/dashboard/charts" style={{ color: 'inherit' }}>
                         {lake.name}
                       </Link>
                     </td>
                     <td>{lake.state}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{lake.elevation_m}m</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{lake.area_ha} ha</td>
-                    <td style={{ fontSize: 12 }}>{lake.dam_type}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{lake.elevation_m} m</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{lake.area_ha} ha</td>
+                    <td style={{ fontSize: '0.75rem' }}>{lake.dam_type}</td>
                     <td>
                       <span style={{
                         fontFamily: 'var(--font-mono)', fontWeight: 700,
-                        fontSize: 15, color: riskColor(level),
+                        fontSize: '0.9375rem', color: riskColor(level),
+                        letterSpacing: '-0.02em',
                       }}>
                         {Number(score).toFixed(1)}
                       </span>
@@ -178,17 +271,18 @@ export default function DashboardHome() {
                     <td>
                       {isLive ? (
                         <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          fontSize: 11, color: '#22c55e', fontWeight: 500,
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          fontFamily: 'var(--font-mono)', fontSize: '0.625rem',
+                          color: 'var(--risk-low)', letterSpacing: '0.08em',
                         }}>
-                          <span style={{
-                            width: 5, height: 5, borderRadius: '50%', background: '#22c55e',
-                            animation: 'pulse 2s ease-in-out infinite',
-                          }} />
-                          Live
+                          <span className="dot-live" style={{ width: 6, height: 6 }} />
+                          LIVE
                         </span>
                       ) : (
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: '0.625rem',
+                          color: 'var(--outline)', letterSpacing: '0.06em',
+                        }}>
                           {timeAgo(lake.last_updated) || 'Waiting'}
                         </span>
                       )}
