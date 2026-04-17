@@ -154,10 +154,24 @@ def is_alert_suppressed(lake_id: str, alert_type: str) -> bool:
 def create_demo_users(database):
     """Create default demo accounts if they don't exist."""
     import bcrypt
+
     defaults = [
         {"email": "admin@glof.in", "password": "admin123", "name": "NDMA Admin", "role": "admin"},
         {"email": "user@glof.in", "password": "user123", "name": "Researcher", "role": "user"},
     ]
+
+    # Allow overriding via env vars so the real admin email/password can be set
+    # in the Render dashboard without touching code.
+    _env_admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    _env_admin_password = os.environ.get("ADMIN_PASSWORD", "").strip()
+    if _env_admin_email and _env_admin_password:
+        defaults.append({
+            "email": _env_admin_email,
+            "password": _env_admin_password,
+            "name": os.environ.get("ADMIN_NAME", "Admin"),
+            "role": "admin",
+        })
+
     for u in defaults:
         if not database.users.find_one({"email": u["email"]}):
             hashed = bcrypt.hashpw(u["password"].encode(), bcrypt.gensalt())
