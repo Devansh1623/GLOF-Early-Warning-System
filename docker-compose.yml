@@ -11,12 +11,12 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - MONGO_URI=mongodb+srv://GLOF:GLOF12345@cluster0.k0lwbmf.mongodb.net/glof_db?appName=Cluster0
-      - REDIS_URL=rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379
+      - MONGO_URI=${MONGO_URI}
+      - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-glof_himalaya_secret_2024}
       - FLASK_ENV=${FLASK_ENV:-production}
-      - RESEND_API_KEY=re_apqkKThT_NQpndwxmopgUBazsdHXT4tE1
-      - RESEND_FROM_EMAIL=GLOFWatch <onboarding@resend.dev>
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-GLOFWatch <onboarding@resend.dev>}
 
   worker:
     build:
@@ -28,12 +28,12 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - MONGO_URI=mongodb+srv://GLOF:GLOF12345@cluster0.k0lwbmf.mongodb.net/glof_db?appName=Cluster0
-      - REDIS_URL=rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379
+      - MONGO_URI=${MONGO_URI}
+      - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-glof_himalaya_secret_2024}
       - FLASK_ENV=${FLASK_ENV:-production}
-      - RESEND_API_KEY=re_apqkKThT_NQpndwxmopgUBazsdHXT4tE1
-      - RESEND_FROM_EMAIL=GLOFWatch <onboarding@resend.dev>
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-GLOFWatch <onboarding@resend.dev>}
 
   simulator:
     build:
@@ -52,7 +52,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - REACT_APP_API_URL=http://localhost:5000
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:5000}
     container_name: glof_frontend
     restart: unless-stopped
     ports:
