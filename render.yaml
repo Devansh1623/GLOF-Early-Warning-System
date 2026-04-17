@@ -1,9 +1,8 @@
 services:
 
-  # ── Backend API + Celery Worker (same dyno) ──────────────────────────────────
-  # Celery runs as a background thread via start.sh — no paid worker needed
+  # ── Backend API — NEW service name forces Render to create it fresh ───────────
   - type: web
-    name: glof-backend
+    name: glof-ews-api
     runtime: python
     plan: free
     region: oregon
@@ -15,26 +14,26 @@ services:
     envVars:
       - key: FLASK_ENV
         value: production
-      - key: JWT_SECRET_KEY
-        sync: false
       - key: MONGO_URI
-        sync: false
+        value: "mongodb+srv://GLOF:GLOF12345@cluster0.k0lwbmf.mongodb.net/glof_db?appName=Cluster0"
+      - key: JWT_SECRET_KEY
+        value: "glof_himalaya_secret_2024"
+      - key: REDIS_URL
+        value: "rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379"
       - key: RESEND_API_KEY
-        sync: false
+        value: "re_apqkKThT_NQpndwxmopgUBazsdHXT4tE1"
       - key: RESEND_FROM_EMAIL
         value: "GLOFWatch <onboarding@resend.dev>"
-      - key: REDIS_URL
-        sync: false
       - key: CORS_ORIGINS
         value: "https://glof-frontend.onrender.com"
       - key: ADMIN_EMAIL
         value: "devanshgeria18@gmail.com"
       - key: ADMIN_PASSWORD
-        sync: false   # set manually in Render dashboard → Environment
+        value: "Devansh@2024"
       - key: ADMIN_NAME
         value: "Devansh"
 
-  # ── Frontend (React Static Site — always free) ────────────────────────────────
+  # ── Frontend (React Static Site) ─────────────────────────────────────────────
   - type: web
     name: glof-frontend
     runtime: static
@@ -48,4 +47,4 @@ services:
         destination: /index.html
     envVars:
       - key: REACT_APP_API_URL
-        value: "https://glof-backend.onrender.com"
+        value: "https://glof-ews-api.onrender.com"
