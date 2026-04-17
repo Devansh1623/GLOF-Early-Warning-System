@@ -33,6 +33,17 @@ class LoginSchema(Schema):
     password = fields.Str(required=True)
 
 
+class ForgotPasswordSchema(Schema):
+    email = fields.Email(required=True)
+
+
+class ResetPasswordSchema(Schema):
+    email = fields.Email(required=True)
+    code = fields.Str(required=True, validate=validate.Length(equal=6))
+    password = fields.Str(required=True, validate=validate.Length(min=6, max=128))
+
+
+
 class LakeCreateSchema(Schema):
     id = fields.Str(required=True, validate=validate.Length(min=1, max=20))
     name = fields.Str(required=True, validate=validate.Length(min=1, max=100))
@@ -50,6 +61,7 @@ class LakeCreateSchema(Schema):
 class AlertPreferencesSchema(Schema):
     warnings_enabled = fields.Bool(load_default=True)
     emergencies_enabled = fields.Bool(load_default=True)
+    email_enabled = fields.Bool(load_default=True)
 
 
 class TestAlertSchema(Schema):
@@ -60,6 +72,11 @@ class TestAlertSchema(Schema):
         load_default="Warning",
     )
     message = fields.Str(load_default=None)
+
+
+class AdminEmailAlertSchema(Schema):
+    subject = fields.Str(required=True, validate=validate.Length(min=1, max=120))
+    message = fields.Str(required=True, validate=validate.Length(min=1, max=5000))
 
 
 def validate_json(schema_class, data, partial=False):
