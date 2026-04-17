@@ -13,6 +13,13 @@ Features:
   - Improved /health endpoint
 """
 import os
+import sys
+
+# ── Ensure this file's directory is in sys.path so local packages
+# (core, routes, models, tasks) resolve correctly under gunicorn. ──────────────
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 import json
 import time
 import hmac
@@ -42,7 +49,14 @@ from core.schemas import TelemetrySchema, validate_json
 from core.logger import telemetry_log, alert_log, audit_log, get_logger
 from core.middleware import register_security_headers, register_error_handlers
 from core.db_indexes import ensure_indexes
-from tasks import enqueue_email_jobs
+try:
+    from tasks import enqueue_email_jobs
+    _CELERY_AVAILABLE = True
+except ImportError:
+    _CELERY_AVAILABLE = False
+    def enqueue_email_jobs(*args, **kwargs):  # noqa: E301
+        """Fallback when Celery is unavailable — emails are skipped."""
+        pass
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv()
