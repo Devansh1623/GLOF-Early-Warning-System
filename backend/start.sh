@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# The backend directory must be in PYTHONPATH so that
+# 'from core.xxx import ...' resolves relative to backend/
+export PYTHONPATH="$(cd "$(dirname "$0")" && pwd):${PYTHONPATH}"
+
+echo "==> PYTHONPATH: $PYTHONPATH"
+echo "==> Working dir: $(pwd)"
+
 echo "==> Starting Celery worker in background..."
 python -m celery -A celery_app.celery_app worker \
   -Q notifications \

@@ -10,7 +10,7 @@ services:
     branch: main
     autoDeploy: true
     buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && bash start.sh
+    startCommand: cd backend && PYTHONPATH=$(pwd) bash start.sh
     healthCheckPath: /health
     envVars:
       - key: FLASK_ENV
