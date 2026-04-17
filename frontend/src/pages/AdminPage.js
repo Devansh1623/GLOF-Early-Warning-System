@@ -17,12 +17,16 @@ export default function AdminPage() {
   // Test alert form
   const [testAlert, setTestAlert] = useState({ lake_id: 'GL001', lake_name: 'South Lhonak Lake', type: 'Warning', message: '' });
   const [testAlertSending, setTestAlertSending] = useState(false);
+  const [emailForm, setEmailForm] = useState({ subject: '', message: '' });
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailJobs, setEmailJobs] = useState([]);
 
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
     authFetch('/api/lakes/').then(r => r.json()).then(d => Array.isArray(d) && setLakes(d));
     authFetch('/api/events/').then(r => r.json()).then(d => Array.isArray(d) && setEvents(d));
+    authFetch('/api/alerts/email/jobs?limit=10').then(r => r.json()).then(d => Array.isArray(d) && setEmailJobs(d)).catch(() => {});
   }, []);
 
   if (user?.role !== 'admin') {
@@ -101,6 +105,26 @@ export default function AdminPage() {
     }
   };
 
+  const handleBroadcastEmail = async (e) => {
+    e.preventDefault();
+    setMsg('');
+    setEmailSending(true);
+    try {
+      const res = await authFetch('/api/alerts/email/broadcast', {
+        method: 'POST',
+        body: JSON.stringify(emailForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Email broadcast failed');
+      setMsg(`✓ ${data.message} (${data.queued})`);
+      setEmailForm({ subject: '', message: '' });
+      authFetch('/api/alerts/email/jobs?limit=10').then(r => r.json()).then(d => Array.isArray(d) && setEmailJobs(d)).catch(() => {});
+    } catch (err) {
+      setMsg(`✕ ${err.message}`);
+    }
+    setEmailSending(false);
+  };
+
   return (
     <div style={{ padding: '28px 32px' }} className="animate-fade">
       <div className="page-header">
@@ -111,33 +135,37 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {['alerts', 'lakes', 'events'].map(t => (
-          <button key={t} className={`btn ${tab === t ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => { setTab(t); setMsg(''); }}>
-            {t === 'alerts' ? '🔔 Test Alerts' : t === 'lakes' ? `Lakes (${lakes.length})` : `Events (${events.length})`}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, padding: '6px', background: 'var(--surface-low)', borderRadius: 'var(--radius-xl)', width: 'fit-content' }}>
+        {['alerts', 'lakes', 'events'].map(tabName => (
+          <button key={tabName}
+            className={`btn ${tab === tabName ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => { setTab(tabName); setMsg(''); }}
+            style={{ padding: '8px 18px', fontSize: '0.8125rem' }}
+          >
+            {tabName === 'alerts' ? 'Test Alerts' : tabName === 'lakes' ? `Lakes (${lakes.length})` : `Events (${events.length})`}
           </button>
         ))}
       </div>
 
       {msg && (
         <div style={{
-          padding: '10px 16px', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13,
-          background: msg.startsWith('✓') ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)',
-          color: msg.startsWith('✓') ? '#22c55e' : '#fca5a5',
-          border: `1px solid ${msg.startsWith('✓') ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)'}`,
+          padding: '11px 16px', borderRadius: 'var(--radius-xl)', marginBottom: 16,
+          fontFamily: 'var(--font-body)', fontSize: '0.8125rem',
+          background: msg.startsWith('✓') ? 'rgba(158, 207, 209, 0.08)' : 'rgba(255, 180, 171, 0.08)',
+          color: msg.startsWith('✓') ? 'var(--risk-low)' : 'var(--error)',
+          border: `1px solid ${msg.startsWith('✓') ? 'rgba(158, 207, 209, 0.2)' : 'rgba(255, 180, 171, 0.2)'}`,
         }}>{msg}</div>
       )}
 
       {/* Test Alerts Tab */}
       {tab === 'alerts' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          <div className="card" style={{ padding: 24 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Send Test Alert</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.5 }}>
-              Broadcast a test alert via SSE. All connected dashboard users will see this alert in real-time.
-              Test alerts are marked with a <span style={{ color: '#60a5fa' }}>[TEST]</span> label.
-            </div>
+        <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 24 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', marginBottom: 4, color: 'var(--on-surface)' }}>Send Test Alert</div>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', marginBottom: 20, lineHeight: 1.6 }}>
+            Broadcast a test alert via SSE. All connected dashboard users will see this alert in real-time.
+            Test alerts are marked with a <span style={{ color: 'var(--secondary)' }}>[TEST]</span> label.
+          </div>
             <form onSubmit={handleSendTestAlert} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <label style={labelStyle}>Target Lake</label>
@@ -177,33 +205,80 @@ export default function AdminPage() {
             </form>
           </div>
 
-          <div className="card" style={{ padding: 24 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>How Test Alerts Work</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-              Test alerts verify the alert pipeline end-to-end without real sensor data.
+        <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* Card header */}
+          <div style={{ padding: '24px 24px 0' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', marginBottom: 4, color: 'var(--on-surface)' }}>Send Email Broadcast</div>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', marginBottom: 20, lineHeight: 1.6 }}>
+              Queues email for users who opted in for critical alerts.
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <InfoStep num="1" title="Admin triggers alert" desc="You select a target lake, alert type, and optional message." />
-              <InfoStep num="2" title="Backend processes" desc="The alert is saved to MongoDB and broadcast via Redis pub/sub." />
-              <InfoStep num="3" title="SSE delivers to clients" desc="All connected dashboard users receive the alert in real-time." />
-              <InfoStep num="4" title="Alerts page updates" desc="The test alert appears on the Alerts page with a [TEST] badge." />
-            </div>
-            <div style={{
-              marginTop: 20, padding: '12px 14px',
-              background: 'rgba(59, 130, 246, 0.06)',
-              border: '1px solid rgba(59, 130, 246, 0.15)',
-              borderRadius: 8, fontSize: 12, color: '#6b83a8', lineHeight: 1.5,
-            }}>
-              <strong style={{ color: '#60a5fa' }}>Note:</strong> Users who have opted out of alert notifications will not see Warning-level test alerts. Emergency alerts are always shown.
+            <form onSubmit={handleBroadcastEmail} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>Subject</label>
+                <input
+                  className="input"
+                  value={emailForm.subject}
+                  onChange={(e) => setEmailForm(prev => ({ ...prev, subject: e.target.value }))}
+                  placeholder="Critical basin alert update"
+                  required
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Message</label>
+                <textarea
+                  className="input"
+                  rows={4}
+                  placeholder="Operational alert details for subscribed users..."
+                  value={emailForm.message}
+                  onChange={(e) => setEmailForm(prev => ({ ...prev, message: e.target.value }))}
+                  style={{ resize: 'vertical' }}
+                  required
+                />
+              </div>
+              <button type="submit" className="btn btn-primary"
+                style={{ marginBottom: 24, padding: '12px 20px' }}
+                disabled={emailSending || !emailForm.subject.trim() || !emailForm.message.trim()}>
+                {emailSending ? '⏳ Sending…' : '✉ Send Email to Opt-in Users'}
+              </button>
+            </form>
+          </div>
+
+          {/* Jobs footer — tonal panel */}
+          <div style={{ background: 'var(--surface-low)', padding: '14px 24px 20px', borderTop: '1px solid var(--ghost-border)', flexGrow: 1 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.8125rem', marginBottom: 10, color: 'var(--on-surface)' }}>Recent email jobs</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {emailJobs.length === 0 ? (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--outline)' }}>No email jobs recorded yet.</div>
+              ) : emailJobs.map(job => {
+                const statusColor = job.status === 'sent' ? 'var(--risk-low)' : job.status === 'failed' ? 'var(--error)' : 'var(--secondary)';
+                return (
+                  <div key={`${job.created_at}-${job.to}`} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '6px 10px', borderRadius: 'var(--radius-md)',
+                    background: 'var(--surface-default)',
+                  }}>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', fontWeight: 700,
+                      color: statusColor, textTransform: 'uppercase', letterSpacing: '0.08em',
+                      minWidth: 42,
+                    }}>{job.status}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--on-surface)', flex: 1 }}>{job.to}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--outline)' }}>
+                      {job.created_at ? new Date(job.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
+        </div>
         </div>
       )}
 
       {/* Lakes Tab */}
       {tab === 'lakes' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 20 }}>
-          <div className="card" style={{ padding: 24 }}>
+        <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 24 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Add New Lake</div>
             <form onSubmit={handleAddLake} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input className="input" placeholder="Lake ID (e.g. GL013)" value={newLake.id}
@@ -235,7 +310,7 @@ export default function AdminPage() {
             </form>
           </div>
           <div className="card" style={{ padding: 0 }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 600 }}>
+            <div style={{ padding: '12px 18px', background: 'var(--surface-low)', borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 600, color: 'var(--on-surface)' }}>
               Lake Inventory ({lakes.length})
             </div>
             <div className="table-wrap" style={{ maxHeight: 500, overflowY: 'auto' }}>
@@ -260,7 +335,7 @@ export default function AdminPage() {
       {/* Events Tab */}
       {tab === 'events' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 20 }}>
-          <div className="card" style={{ padding: 24 }}>
+        <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 24 }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Add New GLOF Event</div>
             <form onSubmit={handleAddEvent} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input className="input" placeholder="Event ID (e.g. EVT008)" value={newEvent.event_id}
@@ -291,7 +366,7 @@ export default function AdminPage() {
             </form>
           </div>
           <div className="card" style={{ padding: 0 }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 600 }}>
+            <div style={{ padding: '12px 18px', background: 'var(--surface-low)', borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0', fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 600, color: 'var(--on-surface)' }}>
               GLOF Events ({events.length})
             </div>
             <div className="table-wrap" style={{ maxHeight: 500, overflowY: 'auto' }}>
@@ -316,25 +391,13 @@ export default function AdminPage() {
   );
 }
 
-/* Sub-components */
-function InfoStep({ num, title, desc }) {
-  return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-        background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 12, fontWeight: 700, color: '#60a5fa', fontFamily: 'var(--font-mono)',
-      }}>{num}</div>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{title}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{desc}</div>
-      </div>
-    </div>
-  );
-}
-
 const labelStyle = {
-  display: 'block', fontSize: 11, fontWeight: 600, color: '#6b83a8',
-  marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em',
+  display: 'block',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '0.5625rem',
+  fontWeight: 500,
+  color: 'var(--on-surface-variant)',
+  marginBottom: 7,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
 };

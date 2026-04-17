@@ -46,7 +46,7 @@ export default function EventsPage() {
         )}
       </div>
 
-      <div className="card" style={{ padding: 0 }}>
+      <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', overflow: 'hidden' }}>
         <div className="table-wrap">
           <table>
             <thead>
@@ -63,20 +63,20 @@ export default function EventsPage() {
             <tbody>
               {events.map(evt => (
                 <tr key={evt.event_id}>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)', maxWidth: 200 }}>{evt.title}</td>
+                  <td style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--on-surface)', maxWidth: 200, fontSize: '0.8125rem' }}>{evt.title}</td>
                   <td>{evt.location}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12, whiteSpace: 'nowrap' }}>{evt.date}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{evt.date}</td>
                   <td><span className={riskBadgeClass(evt.severity)}>{evt.severity}</span></td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
                     {evt.peak_discharge_m3s ? `${evt.peak_discharge_m3s.toLocaleString()} m³/s` : '—'}
                   </td>
-                  <td style={{ maxWidth: 350, fontSize: 12, lineHeight: 1.5 }}>{evt.impact_summary}</td>
-                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{evt.source}</td>
+                  <td style={{ maxWidth: 350, fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', lineHeight: 1.6 }}>{evt.impact_summary}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--outline)', letterSpacing: '0.06em' }}>{evt.source}</td>
                 </tr>
               ))}
               {events.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 48, fontFamily: 'var(--font-body)', color: 'var(--outline)', fontSize: '0.875rem' }}>
                     No events match the selected filters.
                   </td>
                 </tr>

@@ -1,399 +1,401 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-/**
- * Public-facing landing page for GLOFWatch.
- * Styled inline to keep everything self-contained.
- */
+/* ─── Cursor lighting utility ─────────────────────────────── */
+function useCursorLighting(containerRef) {
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const cards = el.querySelectorAll('.card-lit');
+    const handler = (e) => {
+      cards.forEach(card => {
+        const rect = card.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        card.style.setProperty('--mx', `${x}%`);
+        card.style.setProperty('--my', `${y}%`);
+      });
+    };
+    el.addEventListener('mousemove', handler);
+    return () => el.removeEventListener('mousemove', handler);
+  }, [containerRef]);
+}
+
 export default function LandingPage() {
+  const navigate = useNavigate();
+  const containerRef = useRef(null);
+  const parallaxRef = useRef(null);
+  const [scrollY, setScrollY] = useState(0);
+
+  useCursorLighting(containerRef);
+
+  /* Parallax scroll */
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const parallaxStyle = (factor) => ({
+    transform: `translateY(${scrollY * factor}px)`,
+  });
+
   return (
-    <div className="landing-page" style={s.page}>
+    <div className="landing" ref={containerRef}>
+      {/* ── Atmospheric Background ── */}
+      <div className="landing-bg">
+        <div className="parallax-layer layer-sky" style={parallaxStyle(0.05)} />
+        <div className="parallax-layer layer-aurora" style={parallaxStyle(0.08)} />
+        <div className="parallax-layer layer-grid" />
+        <div className="parallax-layer layer-mountains" style={parallaxStyle(0.12)}>
+          <MountainSVG />
+        </div>
+        <div className="parallax-layer layer-glacier" style={parallaxStyle(0.15)} />
+      </div>
 
-      {/* ▸ Ambient glows */}
-      <div style={s.glow1} />
-      <div style={s.glow2} />
-
-      {/* ════════ Navbar ════════ */}
-      <nav style={s.nav}>
-        <div style={s.navInner}>
-          <div style={s.navBrand}>
-            <svg width="26" height="26" viewBox="0 0 40 40" fill="none">
-              <path d="M20 4L4 36h32L20 4z" stroke="url(#nG)" strokeWidth="2.5" fill="none"/>
-              <path d="M20 12L10 32h20L20 12z" stroke="url(#nG)" strokeWidth="1.5" fill="url(#nG)" fillOpacity="0.08"/>
-              <path d="M14 28c2-4 4-6 6-6s4 2 6 6" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round"/>
-              <defs><linearGradient id="nG" x1="20" y1="4" x2="20" y2="36"><stop stopColor="#60a5fa"/><stop offset="1" stopColor="#818cf8"/></linearGradient></defs>
-            </svg>
-            <span style={s.navTitle}>GLOFWatch</span>
-          </div>
-          <div style={s.navLinks}>
-            <a href="#features" style={s.navLink}>Features</a>
-            <a href="#how-it-works" style={s.navLink}>How It Works</a>
-            <a href="#stats" style={s.navLink}>Impact</a>
-            <Link to="/login" style={s.navCTA}>Sign In →</Link>
+      {/* ── Navigation ── */}
+      <nav className="landing-nav">
+        <div className="nav-brand">
+          <BrandMark size={28} />
+          GLOFWatch
+        </div>
+        <div className="nav-links">
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#data">Data</a>
+          <div className="nav-cta" style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-outline" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
+              Sign in
+            </button>
+            <button className="btn btn-primary" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
+              Get Access
+            </button>
           </div>
         </div>
       </nav>
 
-      {/* ════════ Hero ════════ */}
-      <section style={s.hero}>
-        <div style={{ animation: 'fadeSlideUp 0.8s ease-out forwards', opacity: 0 }}>
-          <div style={s.heroBadge}>
-            <span style={s.heroBadgeDot} />
-            Live Monitoring · 12 Glacial Lakes
+      {/* ── Hero ── */}
+      <section className="landing-hero">
+        <div className="animate-fade">
+          <div className="hero-eyebrow">
+            <span className="hero-eyebrow-dot" />
+            12 Lakes Monitored · 5s Refresh · Himalayas
           </div>
-          <h1 className="landing-hero" style={s.heroTitle}>
-            Predict Glacial Lake<br />
-            <span style={s.heroGradient}>Outburst Floods</span>
-            <br />Before They Strike
+
+          <h1 className="hero-title">
+            Glacial Outburst<br />
+            <span>Early Warning</span><br />
+            Intelligence
           </h1>
-          <p style={s.heroSub}>
-            Real-time satellite telemetry, automated risk scoring, and emergency
-            alerts for Himalayan glacial lakes. Protecting millions of downstream
-            communities.
+
+          <p className="hero-sub">
+            Precision telemetry, ML-driven risk scoring, and operational alert pipelines for the
+            Indian Himalayan Region — from basin to command center in under 5 seconds.
           </p>
-          <div style={s.heroCTAs}>
-            <Link to="/login" style={s.btnPrimary}>
-              Launch Dashboard →
-            </Link>
-            <a href="#features" style={s.btnOutline}>
-              Learn More ↓
-            </a>
-          </div>
-        </div>
 
-        {/* Animated status display */}
-        <div style={{ animation: 'fadeSlideUp 1s ease-out 0.3s forwards', opacity: 0 }}>
-          <div style={s.heroPreview}>
-            <div style={s.previewHeader}>
-              <span style={s.previewDot('#22c55e')} />
-              <span style={{fontSize:11,color:'#22c55e',fontWeight:600}}>SYSTEM ACTIVE</span>
-              <span style={{fontSize:11,color:'#4a5f82',marginLeft:'auto'}}>12 lakes monitored</span>
+          <div className="hero-actions">
+            <button className="btn btn-primary" onClick={() => navigate('/login')} id="hero-cta-primary" style={{ padding: '12px 26px' }}>
+              Open Dashboard
+            </button>
+            <button className="btn btn-outline" onClick={() => navigate('/login')} id="hero-cta-secondary" style={{ padding: '12px 26px' }}>
+              View Map →
+            </button>
+          </div>
+
+          <div className="hero-meta" style={{ marginTop: 32 }}>
+            <div className="hero-meta-item">
+              <strong>12</strong>
+              <span>Lakes monitored</span>
             </div>
-            <div style={s.previewGrid}>
-              <PreviewStat label="Risk Alerts (24h)" value="3" color="#ef4444" />
-              <PreviewStat label="Avg Risk Score"     value="42.1" color="#f59e0b" />
-              <PreviewStat label="Temperature"        value="6.8°C" color="#60a5fa" />
-              <PreviewStat label="Uptime"             value="99.9%" color="#22c55e" />
+            <div className="hero-meta-item">
+              <strong>5s</strong>
+              <span>Stream refresh</span>
+            </div>
+            <div className="hero-meta-item">
+              <strong>24h</strong>
+              <span>Audit trail</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Ice Stack visual */}
+        <div className="hero-visual">
+          <div className="ice-stack">
+            <div className="orbit-ring">
+              <div className="orbit-dot" />
+            </div>
+            <div className="ice-block one">
+              <IceBlockContent label="Water Level" value="4,218 m" delta="+3.2 cm" />
+            </div>
+            <div className="ice-block two">
+              <IceBlockContent label="Risk Score" value="72.4" delta="↑ Elevated" warn />
+            </div>
+            <div className="ice-block three">
+              <IceBlockContent label="Seismic" value="0.14g" delta="within safe" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ════════ Features ════════ */}
-      <section id="features" style={s.section}>
-        <h2 style={s.sectionTitle}>Comprehensive Monitoring Platform</h2>
-        <p style={s.sectionSub}>
-          End-to-end early warning system built for India's most critical glacial lakes
-        </p>
-        <div className="landing-features" style={s.featureGrid}>
-          <FeatureCard icon="🛰️" title="Satellite Tracking"
-            desc="CWC & NRSC verified data for 12 high-risk Himalayan lakes with real-time parameter feeds." />
-          <FeatureCard icon="📡" title="Live SSE Telemetry"
-            desc="Server-Sent Events stream temperature, precipitation, water level and seismic data every 5 seconds." />
-          <FeatureCard icon="⚡" title="Instant Alerts"
-            desc="Browser push notifications and in-app toasts the moment risk thresholds are breached." />
-          <FeatureCard icon="🗺️" title="Interactive Map"
-            desc="Leaflet map with colour-coded risk overlays, pop-up details, and one-click lake navigation." />
-          <FeatureCard icon="📊" title="Analytics Dashboard"
-            desc="Recharts-powered time-series, histograms, risk correlation and historical event analysis." />
-          <FeatureCard icon="🔐" title="Role-Based Access"
-            desc="JWT authentication with admin and user roles, session management, and audit logging." />
+      {/* ── Features ── */}
+      <section className="section" id="features">
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div className="section-label">Capabilities</div>
+          <h2 className="section-title">Built for field precision</h2>
+          <p className="section-sub" style={{ margin: '12px auto 0', textAlign: 'center' }}>
+            Every component is engineered for decision-critical environments where latency and accuracy are non-negotiable.
+          </p>
+        </div>
+
+        <div className="feature-list" style={{ marginTop: 48 }}>
+          {FEATURES.map((f, i) => (
+            <div key={i} className={`feature-item card-lit`}
+              style={{
+                borderRadius:
+                  i === 0 ? 'var(--radius-2xl) 0 0 0' :
+                  i === 2 ? '0 var(--radius-2xl) 0 0' :
+                  i === 3 ? '0 0 0 var(--radius-2xl)' :
+                  i === 5 ? '0 0 var(--radius-2xl) 0' : 0,
+              }}
+            >
+              <div className="feature-icon">
+                <f.Icon />
+              </div>
+              <div>
+                <h4>{f.title}</h4>
+                <p>{f.desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ════════ How it Works ════════ */}
-      <section id="how-it-works" style={{ ...s.section, background: 'rgba(8, 12, 22, 0.6)' }}>
-        <h2 style={s.sectionTitle}>How It Works</h2>
-        <p style={s.sectionSub}>From satellite to emergency alert in seconds</p>
-        <div style={s.stepsRow}>
-          <Step num="01" title="Data Ingestion"
-            desc="Open-Meteo API feeds weather & hydrological data for each glacial lake basin." />
-          <StepArrow />
-          <Step num="02" title="Risk Scoring"
-            desc="Weighted algorithm (temperature 35%, rainfall 30%, water level 25%, seismicity 10%) computes a 0–100 score." />
-          <StepArrow />
-          <Step num="03" title="Alert Broadcast"
-            desc="SSE stream pushes updates; browser notifications + in-app toasts fire when thresholds are crossed." />
+      {/* ── How it works ── */}
+      <section className="section" id="how-it-works" style={{ paddingTop: 0 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div className="section-label">Workflow</div>
+          <h2 className="section-title">From sensor to alert in realtime</h2>
+        </div>
+
+        <div className="step-grid">
+          {STEPS.map((s, i) => (
+            <div key={i} className="step-card card-lit">
+              <div className="step-number">0{i + 1}</div>
+              <h4>{s.title}</h4>
+              <p>{s.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ════════ Stats ════════ */}
-      <section id="stats" style={s.section}>
-        <div className="landing-stats" style={s.statsRow}>
-          <Stat num="12" label="Glacial Lakes Monitored" />
-          <Stat num="5s" label="Data Refresh Interval" />
-          <Stat num="4" label="Risk Parameters Tracked" />
-          <Stat num="100%" label="Open-Source Stack" />
+      {/* ── Metrics ── */}
+      <section className="section" id="data" style={{ paddingTop: 0 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div className="section-label">System Metrics</div>
+          <h2 className="section-title">Observatory at a glance</h2>
+        </div>
+        <div className="metric-row">
+          {METRICS.map((m, i) => (
+            <div key={i} className="metric"
+              style={{
+                borderRadius:
+                  i === 0 ? 'var(--radius-2xl) 0 0 var(--radius-2xl)' :
+                  i === METRICS.length - 1 ? '0 var(--radius-2xl) var(--radius-2xl) 0' : 0,
+              }}
+            >
+              <strong>{m.value}</strong>
+              <span>{m.label}</span>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ════════ CTA ════════ */}
-      <section style={s.ctaSection}>
-        <h2 style={s.ctaTitle}>Start Monitoring Today</h2>
-        <p style={s.ctaSub}>
-          Create a free account and access the full real-time dashboard.
-        </p>
-        <Link to="/login" style={s.btnPrimary}>
-          Get Started — Free →
-        </Link>
-      </section>
+      {/* ── CTA Band ── */}
+      <div className="cta-band">
+        <div>
+          <h3>Activate observatory access</h3>
+          <p>Full telemetry, basins, risk engine, and command alerts — for your team.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+          <button className="btn btn-outline" onClick={() => navigate('/login')} id="cta-band-secondary" style={{ padding: '12px 24px' }}>
+            Sign in
+          </button>
+          <button className="btn btn-primary" onClick={() => navigate('/login')} id="cta-band-primary" style={{ padding: '12px 24px' }}>
+            Get Access →
+          </button>
+        </div>
+      </div>
 
-      {/* ════════ Footer ════════ */}
-      <footer style={s.footer}>
-        <div style={s.footerInner}>
-          <div>
-            <span style={{fontSize:14,fontWeight:700,color:'#8b9dc3'}}>GLOFWatch</span>
-            <span style={{fontSize:11,color:'#4a5f82',marginLeft:8}}>
-              © {new Date().getFullYear()}
-            </span>
-          </div>
-          <div style={{display:'flex',gap:20}}>
-            <Link to="/privacy" style={s.footLink}>Privacy</Link>
-            <Link to="/terms" style={s.footLink}>Terms</Link>
-            <span style={s.footLink}>Powered by Open-Meteo · CWC · NRSC</span>
-          </div>
+      {/* ── Footer ── */}
+      <footer className="landing-footer">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <BrandMark size={20} />
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--on-surface-variant)', fontSize: '0.875rem' }}>
+            GLOFWatch
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.08em' }}>
+            v1.0 · Early Warning System
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <a href="/privacy" style={{ color: 'var(--outline)' }}>Privacy</a>
+          <a href="/terms" style={{ color: 'var(--outline)' }}>Terms</a>
+          <span>© 2025 GLOFWatch. IHR Basin Monitoring Initiative.</span>
         </div>
       </footer>
     </div>
   );
 }
 
-/* ── Sub-components ── */
-function PreviewStat({ label, value, color }) {
+/* ── Data ───────────────────────────────────────────────── */
+const FEATURES = [
+  {
+    title: 'Live Telemetry Stream',
+    desc: 'Water level, seismic activity, and temperature readings pushed over SSE every 5 seconds at basin resolution.',
+    Icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    title: 'ML Risk Engine',
+    desc: '5-factor risk scoring model with IsolationForest anomaly detection. Scores 0–100 with configurable thresholds.',
+    Icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <circle cx="12" cy="12" r="3" strokeLinecap="round"/>
+        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    title: 'Geospatial Basin Map',
+    desc: 'Interactive Leaflet map with lake markers, real-time risk tiers, and drilldown basin panels — field-ready.',
+    Icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    title: 'Operational Alerts',
+    desc: 'Threshold-triggered alerts with severity tiers, email dispatch for 90+ scores, and full acknowledgement logs.',
+    Icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+        <line x1="12" y1="9" x2="12" y2="13" strokeLinecap="round"/>
+        <line x1="12" y1="17" x2="12.01" y2="17" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    title: 'Role-Based Access',
+    desc: 'Operator, Analyst, and Admin roles with fine-grained route guards and per-user alert preference controls.',
+    Icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="9" cy="7" r="4" strokeLinecap="round"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" strokeLinecap="round"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    title: 'Audit Trail',
+    desc: '24-hour rolling event log with anomaly detections, alert dispatches, and system health markers timestamped to the second.',
+    Icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinecap="round" strokeLinejoin="round"/>
+        <polyline points="14 2 14 8 20 8" strokeLinecap="round" strokeLinejoin="round"/>
+        <line x1="16" y1="13" x2="8" y2="13" strokeLinecap="round"/>
+        <line x1="16" y1="17" x2="8" y2="17" strokeLinecap="round"/>
+        <polyline points="10 9 9 9 8 9" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+];
+
+const STEPS = [
+  {
+    title: 'Sensor ingestion',
+    desc: 'Field sensors push water level, seismic intensity, and temperature readings to our ingestion API every 5 seconds via secured endpoints.',
+  },
+  {
+    title: 'ML risk scoring',
+    desc: 'The risk engine runs a weighted 5-factor model augmented with IsolationForest anomaly detection to produce a 0–100 risk index per basin.',
+  },
+  {
+    title: 'Alert dispatch',
+    desc: 'Readings breaching configured thresholds (60, 80, 90) trigger real-time SSE notifications, in-app alerts, and email dispatches to assigned operators.',
+  },
+];
+
+const METRICS = [
+  { value: '12',   label: 'Basins monitored' },
+  { value: '5s',   label: 'Telemetry cadence' },
+  { value: '99.9%', label: 'Uptime SLA' },
+  { value: '24h',  label: 'Historical log window' },
+];
+
+/* ── Mountain SVG ─────────────────────────────────────────── */
+function MountainSVG() {
   return (
-    <div style={s.previewStat}>
-      <div style={{fontSize:10,color:'#4a5f82',textTransform:'uppercase',letterSpacing:'0.08em'}}>{label}</div>
-      <div style={{fontSize:22,fontWeight:700,color,fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{value}</div>
+    <svg className="mountain-svg" viewBox="0 0 1440 400" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="mtn-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#132032" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#061425" stopOpacity="1" />
+        </linearGradient>
+        <linearGradient id="mtn-highlight" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#9ECFD1" stopOpacity="0.06" />
+          <stop offset="50%" stopColor="#C4F7F9" stopOpacity="0.12" />
+          <stop offset="100%" stopColor="#9ECFD1" stopOpacity="0.04" />
+        </linearGradient>
+      </defs>
+      {/* Back range */}
+      <path d="M0,280 L80,210 L180,255 L260,175 L340,220 L460,130 L540,185 L620,105 L720,90 L800,135 L880,80 L960,120 L1060,70 L1160,110 L1260,88 L1360,130 L1440,95 L1440,400 L0,400 Z"
+        fill="url(#mtn-fill)" opacity="0.6" />
+      {/* Front range */}
+      <path d="M0,350 L120,270 L220,310 L340,220 L420,270 L520,180 L620,230 L720,155 L820,200 L920,140 L1020,190 L1120,125 L1220,170 L1320,140 L1440,180 L1440,400 L0,400 Z"
+        fill="url(#mtn-fill)" />
+      {/* Snow highlights */}
+      <path d="M520,180 L560,205 L580,180 Z" fill="url(#mtn-highlight)" />
+      <path d="M720,155 L758,178 L776,155 Z" fill="url(#mtn-highlight)" />
+      <path d="M1120,125 L1155,148 L1170,125 Z" fill="url(#mtn-highlight)" />
+    </svg>
+  );
+}
+
+/* ── Ice Block Content ─────────────────────────────────────── */
+function IceBlockContent({ label, value, delta, warn }) {
+  return (
+    <div style={{ padding: '16px 18px' }}>
+      <div style={{
+        fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+        color: 'var(--outline)', letterSpacing: '0.12em',
+        textTransform: 'uppercase', marginBottom: 6,
+      }}>{label}</div>
+      <div style={{
+        fontFamily: 'var(--font-mono)', fontSize: '1.125rem',
+        color: 'var(--on-surface)', fontWeight: 600, letterSpacing: '-0.02em',
+      }}>{value}</div>
+      <div style={{
+        fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+        color: warn ? 'var(--risk-high)' : 'var(--risk-low)', marginTop: 4,
+      }}>{delta}</div>
     </div>
   );
 }
 
-function FeatureCard({ icon, title, desc }) {
+/* ── Brand Mark ─────────────────────────────────────────── */
+function BrandMark({ size = 32 }) {
+  const s = size / 48;
   return (
-    <div style={s.featureCard}>
-      <div style={s.featureIcon}>{icon}</div>
-      <h3 style={s.featureTitle}>{title}</h3>
-      <p style={s.featureDesc}>{desc}</p>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M24 4L6 40h36L24 4z" stroke="#C4F7F9" strokeWidth={1.5 / s} strokeLinejoin="round" />
+      <path d="M24 14L12 38h24L24 14z" fill="rgba(19,32,50,0.9)" stroke="#A8DADC" strokeWidth={1.2 / s} strokeLinejoin="round" />
+      <path d="M17 30c2.5-4 5-6 7-6s4.5 2 7 6" stroke="#9ECFD1" strokeWidth={1.8 / s} strokeLinecap="round" />
+      <circle cx="24" cy="38" r="3" fill="#A8DADC" opacity="0.9" />
+    </svg>
   );
 }
-
-function Step({ num, title, desc }) {
-  return (
-    <div style={s.step}>
-      <div style={s.stepNum}>{num}</div>
-      <h4 style={s.stepTitle}>{title}</h4>
-      <p style={s.stepDesc}>{desc}</p>
-    </div>
-  );
-}
-
-function StepArrow() {
-  return (
-    <div style={{color:'#3b82f6',fontSize:20,display:'flex',alignItems:'center',padding:'0 8px'}}>→</div>
-  );
-}
-
-function Stat({ num, label }) {
-  return (
-    <div style={{textAlign:'center'}}>
-      <div style={{fontSize:40,fontWeight:800,fontFamily:"'JetBrains Mono',monospace",
-        background:'linear-gradient(135deg,#60a5fa,#818cf8)',WebkitBackgroundClip:'text',
-        WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{num}</div>
-      <div style={{fontSize:12,color:'#6b83a8',marginTop:6}}>{label}</div>
-    </div>
-  );
-}
-
-/* ── Styles ── */
-const s = {
-  page: {
-    background: '#060a14', color: '#e8edf5', position: 'relative',
-    minHeight: '100vh',
-  },
-  glow1: {
-    position: 'fixed', width: 700, height: 700, borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(59,130,246,0.07) 0%, transparent 70%)',
-    top: '-10%', left: '-10%', pointerEvents: 'none', zIndex: 0,
-  },
-  glow2: {
-    position: 'fixed', width: 600, height: 600, borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(129,140,248,0.05) 0%, transparent 70%)',
-    bottom: '-10%', right: '-10%', pointerEvents: 'none', zIndex: 0,
-  },
-
-  /* Nav */
-  nav: {
-    position: 'sticky', top: 0, zIndex: 100,
-    background: 'rgba(6, 10, 20, 0.85)',
-    backdropFilter: 'blur(14px)',
-    borderBottom: '1px solid rgba(56, 78, 119, 0.2)',
-  },
-  navInner: {
-    maxWidth: 1100, margin: '0 auto', padding: '14px 32px',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  },
-  navBrand: { display: 'flex', alignItems: 'center', gap: 10 },
-  navTitle: {
-    fontSize: 16, fontWeight: 800, letterSpacing: '-0.03em',
-    background: 'linear-gradient(135deg, #60a5fa, #818cf8)',
-    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-  },
-  navLinks: { display: 'flex', alignItems: 'center', gap: 24 },
-  navLink: {
-    fontSize: 13, color: '#6b83a8', textDecoration: 'none', fontWeight: 500,
-    transition: 'color 0.15s',
-  },
-  navCTA: {
-    fontSize: 13, fontWeight: 600, color: '#fff',
-    background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
-    padding: '8px 18px', borderRadius: 8, textDecoration: 'none',
-    boxShadow: '0 2px 12px rgba(59,130,246,0.25)',
-    transition: 'box-shadow 0.2s',
-  },
-
-  /* Hero */
-  hero: {
-    maxWidth: 1100, margin: '0 auto', padding: '100px 32px 60px',
-    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'center',
-    position: 'relative', zIndex: 1,
-  },
-  heroBadge: {
-    display: 'inline-flex', alignItems: 'center', gap: 8,
-    fontSize: 11, fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase',
-    letterSpacing: '0.08em', marginBottom: 20,
-    background: 'rgba(59,130,246,0.08)', padding: '6px 14px', borderRadius: 20,
-    border: '1px solid rgba(59,130,246,0.15)',
-  },
-  heroBadgeDot: {
-    width: 6, height: 6, borderRadius: '50%', background: '#22c55e',
-    animation: 'pulse 2s ease-in-out infinite',
-  },
-  heroTitle: {
-    fontSize: 44, fontWeight: 800, letterSpacing: '-0.03em',
-    lineHeight: 1.15, marginBottom: 20,
-  },
-  heroGradient: {
-    background: 'linear-gradient(135deg, #60a5fa, #818cf8, #a78bfa)',
-    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text',
-  },
-  heroSub: {
-    fontSize: 15, color: '#7b94b8', lineHeight: 1.7, maxWidth: 480, marginBottom: 32,
-  },
-  heroCTAs: { display: 'flex', gap: 14 },
-
-  btnPrimary: {
-    display: 'inline-flex', alignItems: 'center',
-    padding: '13px 26px', borderRadius: 10, fontSize: 14, fontWeight: 700,
-    color: '#fff', background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
-    textDecoration: 'none',
-    boxShadow: '0 4px 20px rgba(59,130,246,0.3)',
-    transition: 'box-shadow 0.2s, transform 0.15s',
-  },
-  btnOutline: {
-    display: 'inline-flex', alignItems: 'center',
-    padding: '13px 26px', borderRadius: 10, fontSize: 14, fontWeight: 600,
-    color: '#8b9dc3', background: 'transparent',
-    border: '1px solid rgba(56, 78, 119, 0.35)', textDecoration: 'none',
-    transition: 'border-color 0.2s, color 0.15s',
-  },
-
-  /* Preview card */
-  heroPreview: {
-    background: 'rgba(10, 14, 26, 0.9)',
-    border: '1px solid rgba(56, 78, 119, 0.25)',
-    borderRadius: 16, padding: 24,
-    boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
-    backdropFilter: 'blur(20px)',
-  },
-  previewHeader: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    paddingBottom: 16, borderBottom: '1px solid rgba(56,78,119,0.2)',
-    marginBottom: 16,
-  },
-  previewDot: (c) => ({
-    width: 8, height: 8, borderRadius: '50%', background: c,
-    animation: 'pulse 2s ease-in-out infinite',
-  }),
-  previewGrid: {
-    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
-  },
-  previewStat: {
-    padding: 14, background: 'rgba(15, 22, 41, 0.6)',
-    borderRadius: 10, border: '1px solid rgba(56,78,119,0.15)',
-  },
-
-  /* Section */
-  section: {
-    maxWidth: 1100, margin: '0 auto', padding: '80px 32px',
-    position: 'relative', zIndex: 1,
-  },
-  sectionTitle: {
-    fontSize: 28, fontWeight: 800, textAlign: 'center',
-    letterSpacing: '-0.02em', marginBottom: 10,
-  },
-  sectionSub: {
-    fontSize: 14, color: '#6b83a8', textAlign: 'center', marginBottom: 48,
-  },
-
-  /* Features */
-  featureGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20,
-  },
-  featureCard: {
-    padding: 24, background: 'rgba(15, 22, 41, 0.7)',
-    border: '1px solid rgba(56,78,119,0.2)',
-    borderRadius: 14, transition: 'border-color 0.2s, box-shadow 0.2s',
-  },
-  featureIcon: { fontSize: 26, marginBottom: 14 },
-  featureTitle: {
-    fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#e8edf5',
-  },
-  featureDesc: { fontSize: 13, color: '#7b94b8', lineHeight: 1.6 },
-
-  /* Steps */
-  stepsRow: {
-    display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: 12,
-    flexWrap: 'wrap',
-  },
-  step: {
-    maxWidth: 260, padding: 24, background: 'rgba(15, 22, 41, 0.6)',
-    border: '1px solid rgba(56,78,119,0.15)', borderRadius: 14, textAlign: 'center',
-  },
-  stepNum: {
-    fontSize: 32, fontWeight: 800, fontFamily: "'JetBrains Mono',monospace",
-    background: 'linear-gradient(135deg, #3b82f6, #818cf8)',
-    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-    backgroundClip: 'text', marginBottom: 12,
-  },
-  stepTitle: { fontSize: 15, fontWeight: 700, marginBottom: 8 },
-  stepDesc: { fontSize: 13, color: '#7b94b8', lineHeight: 1.6 },
-
-  /* Stats */
-  statsRow: {
-    display: 'flex', justifyContent: 'center', gap: 64, flexWrap: 'wrap',
-  },
-
-  /* CTA */
-  ctaSection: {
-    textAlign: 'center', padding: '80px 32px',
-    background: 'linear-gradient(180deg, transparent, rgba(59,130,246,0.04))',
-    position: 'relative', zIndex: 1,
-  },
-  ctaTitle: { fontSize: 28, fontWeight: 800, marginBottom: 12 },
-  ctaSub: { fontSize: 14, color: '#6b83a8', marginBottom: 28 },
-
-  /* Footer */
-  footer: {
-    borderTop: '1px solid rgba(56, 78, 119, 0.2)',
-    padding: '20px 32px', position: 'relative', zIndex: 1,
-  },
-  footerInner: {
-    maxWidth: 1100, margin: '0 auto',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    flexWrap: 'wrap', gap: 12,
-  },
-  footLink: { fontSize: 12, color: '#4a5f82', textDecoration: 'none' },
-};

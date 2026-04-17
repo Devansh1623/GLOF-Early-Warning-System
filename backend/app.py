@@ -111,7 +111,7 @@ MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/glof_db")
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo_client.glof_db
 
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+redis_client = redis.from_url(_redis_url, decode_responses=True)
 
 # Sensor HMAC key (IoT authentication)
 SENSOR_API_KEY = os.environ.get("SENSOR_API_KEY", "glof-sensor-secret-key-2024")

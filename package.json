@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "resend": "^6.10.0"
+  }
+}
