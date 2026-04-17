@@ -24,7 +24,7 @@ services:
       - key: RESEND_FROM_EMAIL
         value: "GLOFWatch <onboarding@resend.dev>"
       - key: REDIS_URL
-        value: "rediss://default:gQAAAAAAAYmwAAIocDFhYWY1NWQwMzJkMzM0OGFiOGRhMjBlMTZkNTRhZWU1M3AxMTAwNzg0@pretty-locust-100784.upstash.io:6379"
+        sync: false
       - key: CORS_ORIGINS
         value: "https://glof-frontend.onrender.com"
       - key: ADMIN_EMAIL
