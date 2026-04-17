@@ -22,7 +22,11 @@ def seed_database(db):
         print(f"[SEED] Events collection already populated ({db.glof_events.count_documents({})} docs).")
 
     # Create indexes for performance
-    db.telemetry.create_index([("lake_id", 1), ("timestamp", -1)])
-    db.alerts.create_index([("lake_id", 1), ("timestamp", -1)])
-    db.lakes.create_index("id", unique=True)
-    print("[SEED] Indexes ensured.")
+    try:
+        db.telemetry.create_index([("lake_id", 1), ("timestamp", -1)])
+        db.alerts.create_index([("lake_id", 1), ("timestamp", -1)])
+        db.notification_jobs.create_index([("channel", 1), ("status", 1), ("created_at", -1)])
+        db.lakes.create_index("id", unique=True)
+        print("[SEED] Indexes ensured.")
+    except Exception as e:
+        print(f"[SEED] Index creation skipped (already exist or conflict).")

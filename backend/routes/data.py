@@ -7,6 +7,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from bson import ObjectId
 from core.logger import alert_log
+from core.schemas import validate_json, AdminEmailAlertSchema
+from tasks import enqueue_email_jobs
 
 lakes_bp  = Blueprint("lakes",  __name__)
 events_bp = Blueprint("events", __name__)
@@ -55,15 +57,25 @@ def get_lake(lake_id):
 @lakes_bp.route("/<lake_id>/telemetry", methods=["GET"])
 @jwt_required()
 def get_telemetry(lake_id):
-    limit = int(request.args.get("limit", 100))
+    limit = min(int(request.args.get("limit", 100)), 500)
+    page = max(int(request.args.get("page", 1)), 1)
+    skip = (page - 1) * limit
+    total = _db_lakes.telemetry.count_documents({"lake_id": lake_id})
     readings = list(
         _db_lakes.telemetry
         .find({"lake_id": lake_id}, {"_id": 0})
         .sort("timestamp", -1)
+        .skip(skip)
         .limit(limit)
     )
     readings.reverse()
-    return jsonify(readings), 200
+    return jsonify({
+        "data": readings,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, -(-total // limit)),  # ceiling division
+    }), 200
 
 
 @lakes_bp.route("/", methods=["POST"])
@@ -164,12 +176,9 @@ def get_alerts():
     if status_filter:
         query["status"] = status_filter.upper()
 
-    alerts = list(
-        _db_alerts.alerts
-        .find(query, {"_id": 0})
-        .sort("timestamp", -1)
-        .limit(limit)
-    )
+    alerts = [
+        _serialize(doc) for doc in _db_alerts.alerts.find(query).sort("timestamp", -1).limit(limit)
+    ]
     return jsonify(alerts), 200
 
 
@@ -270,6 +279,7 @@ def get_preferences():
     prefs = user.get("alert_preferences", {
         "warnings_enabled": True,
         "emergencies_enabled": True,
+        "email_enabled": True,
     }) if user else {}
     return jsonify(prefs), 200
 
@@ -284,6 +294,7 @@ def update_preferences():
     prefs = {
         "warnings_enabled": bool(data.get("warnings_enabled", True)),
         "emergencies_enabled": bool(data.get("emergencies_enabled", True)),
+        "email_enabled": bool(data.get("email_enabled", True)),
     }
 
     _db_alerts.users.update_one(
@@ -291,3 +302,69 @@ def update_preferences():
         {"$set": {"alert_preferences": prefs}}
     )
     return jsonify({"message": "Preferences updated", "preferences": prefs}), 200
+
+
+@alerts_bp.route("/email/broadcast", methods=["POST"])
+@jwt_required()
+def admin_email_broadcast():
+    """Admin-only: send an email to opt-in users."""
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    raw = request.get_json() or {}
+    data, errors = validate_json(AdminEmailAlertSchema, raw)
+    if errors:
+        return jsonify({"error": "Validation failed", "details": errors}), 422
+
+    # Fetch users who opted in OR never set preferences (default = opted in)
+    users = list(_db_alerts.users.find(
+        {
+            "email": {"$ne": ""},
+            "$or": [
+                {"alert_preferences.email_enabled": True},
+                {"alert_preferences":  {"$exists": False}},  # never set → default opt-in
+            ]
+        },
+        {"email": 1, "_id": 0}
+    ))
+
+    alert_log.info("Email broadcast user fetch", extra={"user_count": len(users)})
+
+    if not users:
+        return jsonify({
+            "message": "No opted-in users found. Broadcast skipped.",
+            "queued": 0,
+            "skipped": [],
+        }), 200
+
+    queue_result = enqueue_email_jobs(
+        users,
+        data["subject"],
+        data["message"],
+        metadata={"kind": "admin_broadcast"},
+    )
+
+    alert_log.info("Admin email broadcast queued", extra={"queued": queue_result["queued"]})
+    return jsonify({
+        "message": "Email broadcast queued",
+        "queued": queue_result["queued"],
+        "skipped": queue_result["skipped"],
+    }), 200
+
+
+@alerts_bp.route("/email/jobs", methods=["GET"])
+@jwt_required()
+def list_email_jobs():
+    """Admin-only: inspect recent email delivery jobs for debugging."""
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    jobs = list(
+        _db_alerts.notification_jobs
+        .find({"channel": "email"}, {"_id": 0})
+        .sort("created_at", -1)
+        .limit(min(int(request.args.get("limit", 50)), 200))
+    )
+    return jsonify(jobs), 200
