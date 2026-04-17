@@ -187,10 +187,22 @@ def create_demo_users(database):
             app_log.info(f"Created demo user: {u['email']}")
 
 
-# ─── Startup ──────────────────────────────────────────────────────────────────
-ensure_indexes(db)
-seed_database(db)
-create_demo_users(db)
+# ─── Startup (wrapped so crashes don't kill workers) ─────────────────────────
+try:
+    ensure_indexes(db)
+except Exception as _e:
+    app_log.warning(f"ensure_indexes skipped: {_e}")
+
+try:
+    seed_database(db)
+except Exception as _e:
+    app_log.warning(f"seed_database skipped: {_e}")
+
+try:
+    create_demo_users(db)
+except Exception as _e:
+    app_log.warning(f"create_demo_users skipped: {_e}")
+
 register_security_headers(app)
 register_error_handlers(app)
 
@@ -199,6 +211,12 @@ app.register_blueprint(init_auth(db), url_prefix="/api/auth")
 app.register_blueprint(init_lakes(db), url_prefix="/api/lakes")
 app.register_blueprint(init_events(db), url_prefix="/api/events")
 app.register_blueprint(init_alerts(db, redis_client), url_prefix="/api/alerts")
+
+
+@app.route("/")
+def root():
+    """Root health-check — confirms the GLOF Flask auth app is running."""
+    return jsonify({"service": "GLOF Early Warning System API", "version": "2.1.0", "status": "ok"})
 
 
 # ─── Telemetry Endpoint ────────────────────────────────────────────────────────
