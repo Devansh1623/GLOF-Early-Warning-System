@@ -1,5 +1,5 @@
 #!/bin/bash
-# No set -e — we want Gunicorn to start even if Celery fails
+# No set -e — we want Gunicorn to start even if Celery/Simulator fail
 
 # Ensure the backend directory is in PYTHONPATH for local imports (core.*, tasks, etc.)
 export PYTHONPATH="$(cd "$(dirname "$0")" && pwd):${PYTHONPATH}"
@@ -16,6 +16,16 @@ python -m celery -A celery_app.celery_app worker \
 
 CELERY_PID=$!
 echo "==> Celery PID: $CELERY_PID"
+
+# Start telemetry simulator in background
+# Posts to localhost so no external networking needed
+echo "==> Starting telemetry simulator in background..."
+BACKEND_URL="http://localhost:${PORT:-10000}" \
+INTERVAL_SECONDS=8 \
+  python ../simulator/mock_telemetry.py &
+
+SIM_PID=$!
+echo "==> Simulator PID: $SIM_PID"
 
 # Start Gunicorn (foreground — this is what Render monitors for the port)
 echo "==> Starting Gunicorn..."
