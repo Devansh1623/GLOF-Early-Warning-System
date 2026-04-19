@@ -50,13 +50,16 @@ from core.logger import telemetry_log, alert_log, audit_log, get_logger
 from core.middleware import register_security_headers, register_error_handlers
 from core.db_indexes import ensure_indexes
 try:
-    from tasks import enqueue_email_jobs
+    from tasks import enqueue_email_jobs, enqueue_alert_emails
     _CELERY_AVAILABLE = True
 except ImportError:
     _CELERY_AVAILABLE = False
     def enqueue_email_jobs(*args, **kwargs):  # noqa: E301
-        """Fallback when Celery is unavailable — emails are skipped."""
-        pass
+        """Fallback when Celery is unavailable."""
+        return {"queued": 0, "skipped": []}
+    def enqueue_alert_emails(*args, **kwargs):  # noqa: E301
+        """Fallback when Celery is unavailable."""
+        return {"queued": 0, "skipped": []}
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv()
@@ -348,22 +351,42 @@ def receive_telemetry():
                 extra={"lake_id": lake_id, "risk_score": risk["score"], "alert_type": alert_info["type"]},
             )
 
-            if risk["score"] > 90:
-                users = list(db.users.find({"alert_preferences.email_enabled": True, "email": {"$ne": ""}}, {"email": 1}))
-                email_subject = f"GLOFWatch Critical Alert: {data['lake_name']}"
-                email_text = (
-                    f"GLOFWatch ALERT: {data['lake_name']} risk score {risk['score']:.1f} "
-                    f"({risk['level']}). {alert_info['message']}"
-                )
-                queue_result = enqueue_email_jobs(
-                    users,
-                    email_subject,
-                    email_text,
-                    metadata={"kind": "risk_alert", "lake_id": lake_id, "risk_score": risk["score"]},
-                )
+            # ── Email all opted-in users for Warning (≥61) and Emergency (≥80) ──
+            # Fetch the lake record so we can add state/elevation to the email
+            lake_doc = db.lakes.find_one({"id": lake_id}, {"_id": 0,
+                "state": 1, "elevation_m": 1}) or {}
+
+            alert_payload = {
+                "lake_id":       lake_id,
+                "lake_name":     data["lake_name"],
+                "risk_level":    risk["level"],
+                "risk_score":    risk["score"],
+                "alert_type":    alert_info["type"],
+                "alert_message": alert_info["message"],
+                "breakdown":     risk.get("breakdown", {}),
+                "timestamp":     timestamp,
+                "lake_state":    lake_doc.get("state", ""),
+                "lake_elevation": str(lake_doc.get("elevation_m", "")),
+            }
+
+            # Emergency alerts → all opted-in users
+            # Warning alerts   → opted-in users only
+            users = list(db.users.find(
+                {"alert_preferences.email_enabled": True, "email": {"$ne": ""}},
+                {"email": 1, "_id": 0},
+            ))
+
+            if users:
+                q = enqueue_alert_emails(users, alert_payload)
                 app_log.info(
-                    "Email jobs queued",
-                    extra={"lake_id": lake_id, "queued": queue_result["queued"], "skipped": len(queue_result["skipped"])},
+                    "Alert emails queued",
+                    extra={
+                        "lake_id":    lake_id,
+                        "alert_type": alert_info["type"],
+                        "risk_score": risk["score"],
+                        "queued":     q["queued"],
+                        "skipped":    len(q["skipped"]),
+                    },
                 )
         else:
             alert_info = {**alert_info, "suppressed": True, "cooldown_seconds": ALERT_COOLDOWN_SECONDS}
