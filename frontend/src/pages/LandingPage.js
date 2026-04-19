@@ -63,6 +63,7 @@ export default function LandingPage() {
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#data">Data</a>
+          <a href="/about" style={{ color: 'var(--primary)' }}>Our Mission ↗</a>
           <div className="nav-cta" style={{ display: 'flex', gap: 10 }}>
             <button className="btn btn-outline" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
               Sign in
@@ -240,6 +241,7 @@ export default function LandingPage() {
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
           <a href="/privacy" style={{ color: 'var(--outline)' }}>Privacy</a>
           <a href="/terms" style={{ color: 'var(--outline)' }}>Terms</a>
+          <a href="/about" style={{ color: 'var(--outline)' }}>About</a>
           <span>© 2025 GLOFWatch. IHR Basin Monitoring Initiative.</span>
         </div>
       </footer>
