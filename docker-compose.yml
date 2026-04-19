@@ -13,7 +13,7 @@ services:
     environment:
       - MONGO_URI=${MONGO_URI}
       - REDIS_URL=${REDIS_URL}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-glof_himalaya_secret_2024}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - FLASK_ENV=${FLASK_ENV:-production}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-GLOFWatch <onboarding@resend.dev>}
@@ -30,7 +30,7 @@ services:
     environment:
       - MONGO_URI=${MONGO_URI}
       - REDIS_URL=${REDIS_URL}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-glof_himalaya_secret_2024}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - FLASK_ENV=${FLASK_ENV:-production}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-GLOFWatch <onboarding@resend.dev>}

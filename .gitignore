@@ -2,7 +2,11 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+backend/.env
 frontend/build/
 frontend/node_modules/
 *.log
 .DS_Store
+backend_logs*.txt
+test_out.txt
+*.env.local
