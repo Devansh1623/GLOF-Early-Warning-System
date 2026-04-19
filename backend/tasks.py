@@ -6,7 +6,7 @@ from pymongo import MongoClient
 
 from celery_app import celery_app
 from core.logger import get_logger
-from core.notifications import send_email
+from core.notifications import send_email, send_alert_email
 
 
 task_log = get_logger("glof.tasks")
@@ -18,7 +18,57 @@ def get_db():
     return client.glof_db
 
 
+# ── Alert email queue ─────────────────────────────────────────────────────────
+
+def enqueue_alert_emails(users, alert_payload: dict):
+    """
+    Queue rich GLOF alert emails for every opted-in user.
+    alert_payload must contain:
+      lake_name, risk_level, risk_score, alert_type, alert_message,
+      breakdown, timestamp, lake_state (opt), lake_elevation (opt)
+    """
+    db = get_db()
+    queued = 0
+    skipped = []
+
+    for user in users:
+        email = (user.get("email") or "").strip().lower()
+        if not email:
+            skipped.append({"email": "", "reason": "missing_email"})
+            continue
+
+        notification_id = str(uuid.uuid4())
+        db.notification_jobs.insert_one({
+            "_id": notification_id,
+            "channel": "email",
+            "kind": "alert",
+            "to": email,
+            "subject": (
+                f"[GLOFWatch {alert_payload.get('alert_type','Alert')}] "
+                f"{alert_payload.get('lake_name','Lake')} — "
+                f"Risk Score {alert_payload.get('risk_score', 0):.1f}"
+            ),
+            "payload": alert_payload,
+            "status": "queued",
+            "attempts": 0,
+            "metadata": {
+                "kind": "risk_alert",
+                "lake_id": alert_payload.get("lake_id", ""),
+                "risk_score": alert_payload.get("risk_score", 0),
+                "alert_type": alert_payload.get("alert_type", ""),
+            },
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        })
+        deliver_alert_email_task.delay(notification_id)
+        queued += 1
+
+    return {"queued": queued, "skipped": skipped}
+
+
+# ── Broadcast email queue (admin broadcasts) ──────────────────────────────────
+
 def enqueue_email_jobs(users, subject: str, text: str, html: str = "", metadata: dict = None):
+    """Queue generic broadcast emails via the generic send_email path."""
     db = get_db()
     metadata = metadata or {}
     queued = 0
@@ -34,6 +84,7 @@ def enqueue_email_jobs(users, subject: str, text: str, html: str = "", metadata:
         db.notification_jobs.insert_one({
             "_id": notification_id,
             "channel": "email",
+            "kind": "broadcast",
             "to": email,
             "subject": subject,
             "message": text,
@@ -49,8 +100,53 @@ def enqueue_email_jobs(users, subject: str, text: str, html: str = "", metadata:
     return {"queued": queued, "skipped": skipped}
 
 
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_backoff_max=600, retry_jitter=True, max_retries=5)
+# ── Celery tasks ──────────────────────────────────────────────────────────────
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=5,
+)
+def deliver_alert_email_task(self, notification_id: str):
+    """Deliver a rich GLOF alert email using send_alert_email()."""
+    db = get_db()
+    notification = db.notification_jobs.find_one({"_id": notification_id})
+    if not notification:
+        task_log.warning("Alert notification job missing", extra={"notification_id": notification_id})
+        return {"ok": False, "reason": "job_missing"}
+
+    payload = notification.get("payload", {})
+    result = send_alert_email(
+        to_email        = notification.get("to", ""),
+        lake_name       = payload.get("lake_name", "Unknown Lake"),
+        risk_level      = payload.get("risk_level", "High"),
+        risk_score      = float(payload.get("risk_score", 0)),
+        alert_type      = payload.get("alert_type", "Warning"),
+        alert_message   = payload.get("alert_message", ""),
+        breakdown       = payload.get("breakdown", {}),
+        timestamp       = payload.get("timestamp", datetime.now(tz=timezone.utc).isoformat()),
+        lake_state      = payload.get("lake_state", ""),
+        lake_elevation  = payload.get("lake_elevation", ""),
+    )
+    _record_result(db, notification_id, notification, result)
+    if not result.get("ok"):
+        raise RuntimeError(str(result.get("detail") or result.get("reason") or "delivery_failed"))
+    return result
+
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=5,
+)
 def deliver_email_task(self, notification_id: str):
+    """Deliver a generic broadcast email using send_email()."""
     db = get_db()
     notification = db.notification_jobs.find_one({"_id": notification_id})
     if not notification:
@@ -63,29 +159,29 @@ def deliver_email_task(self, notification_id: str):
         notification.get("message", ""),
         notification.get("html", ""),
     )
-    now = datetime.now(tz=timezone.utc).isoformat()
+    _record_result(db, notification_id, notification, result)
+    if not result.get("ok"):
+        raise RuntimeError(str(result.get("detail") or result.get("reason") or "delivery_failed"))
+    return result
 
+
+def _record_result(db, notification_id, notification, result):
+    """Write delivery outcome back to the notification_jobs document."""
+    now = datetime.now(tz=timezone.utc).isoformat()
     update = {
         "last_attempt_at": now,
         "attempts": int(notification.get("attempts", 0)) + 1,
     }
     if result.get("ok"):
-        update.update({
-            "status": "sent",
-            "sent_at": now,
-            "provider_id": result.get("id"),
-        })
-        task_log.info("Email delivered", extra={"notification_id": notification_id, "to": result.get("to", "")})
+        update.update({"status": "sent", "sent_at": now, "provider_id": result.get("id")})
+        task_log.info(
+            "Email delivered",
+            extra={"notification_id": notification_id, "to": result.get("to", "")},
+        )
     else:
-        update.update({
-            "status": "failed",
-            "error": result,
-        })
-        task_log.warning("Email failed", extra={"notification_id": notification_id, "reason": result.get("reason", "unknown")})
-
+        update.update({"status": "failed", "error": result})
+        task_log.warning(
+            "Email failed",
+            extra={"notification_id": notification_id, "reason": result.get("reason", "unknown")},
+        )
     db.notification_jobs.update_one({"_id": notification_id}, {"$set": update})
-
-    if not result.get("ok"):
-        raise RuntimeError(str(result.get("detail") or result.get("reason") or "delivery_failed"))
-
-    return result
