@@ -71,12 +71,14 @@ export default function ChartsPage() {
     authFetch(`/api/lakes/${selectedLake.id}/telemetry?limit=100`)
       .then(r => r.json())
       .then(data => {
-        setHistory(data.data.map(d => ({
-          time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          water_level: d.water_level_rise ?? d.water_level_m ?? 0,
-          risk_score:  d.risk_score ?? 0,
-          temperature: d.temperature ?? d.temperature_c ?? 0,
-        })).reverse());
+        if (Array.isArray(data.data) && data.data.length > 0) {
+          setHistory(data.data.map(d => ({
+            time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            water_level: d.water_level_rise ?? d.water_level_m ?? 0,
+            risk_score:  d.risk_score ?? 0,
+            temperature: d.temperature ?? d.temperature_c ?? 0,
+          })));
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
