@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../utils/AuthContext';
 
 /* ─── Cursor lighting utility ─────────────────────────────── */
 function useCursorLighting(containerRef) {
@@ -23,6 +24,7 @@ function useCursorLighting(containerRef) {
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const containerRef = useRef(null);
   const parallaxRef = useRef(null);
   const [scrollY, setScrollY] = useState(0);
@@ -65,12 +67,20 @@ export default function LandingPage() {
           <a href="#data">Data</a>
           <a href="/about" style={{ color: 'var(--primary)' }}>Our Mission ↗</a>
           <div className="nav-cta" style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn-outline" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
-              Sign in
-            </button>
-            <button className="btn btn-primary" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
-              Get Access
-            </button>
+            {user ? (
+              <button className="btn btn-primary" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/dashboard')}>
+                Go to Dashboard
+              </button>
+            ) : (
+              <>
+                <button className="btn btn-outline" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
+                  Sign in
+                </button>
+                <button className="btn btn-primary" style={{ padding: '7px 16px', fontSize: '0.8125rem' }} onClick={() => navigate('/login')}>
+                  Get Access
+                </button>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -95,10 +105,10 @@ export default function LandingPage() {
           </p>
 
           <div className="hero-actions">
-            <button className="btn btn-primary" onClick={() => navigate('/login')} id="hero-cta-primary" style={{ padding: '12px 26px' }}>
+            <button className="btn btn-primary" onClick={() => navigate(user ? '/dashboard' : '/login')} id="hero-cta-primary" style={{ padding: '12px 26px' }}>
               Open Dashboard
             </button>
-            <button className="btn btn-outline" onClick={() => navigate('/login')} id="hero-cta-secondary" style={{ padding: '12px 26px' }}>
+            <button className="btn btn-outline" onClick={() => navigate(user ? '/dashboard/map' : '/login')} id="hero-cta-secondary" style={{ padding: '12px 26px' }}>
               View Map →
             </button>
           </div>
@@ -218,12 +228,20 @@ export default function LandingPage() {
           <p>Full telemetry, basins, risk engine, and command alerts — for your team.</p>
         </div>
         <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
-          <button className="btn btn-outline" onClick={() => navigate('/login')} id="cta-band-secondary" style={{ padding: '12px 24px' }}>
-            Sign in
-          </button>
-          <button className="btn btn-primary" onClick={() => navigate('/login')} id="cta-band-primary" style={{ padding: '12px 24px' }}>
-            Get Access →
-          </button>
+          {user ? (
+            <button className="btn btn-primary" onClick={() => navigate('/dashboard')} id="cta-band-primary" style={{ padding: '12px 24px' }}>
+              Go to Dashboard →
+            </button>
+          ) : (
+            <>
+              <button className="btn btn-outline" onClick={() => navigate('/login')} id="cta-band-secondary" style={{ padding: '12px 24px' }}>
+                Sign in
+              </button>
+              <button className="btn btn-primary" onClick={() => navigate('/login')} id="cta-band-primary" style={{ padding: '12px 24px' }}>
+                Get Access →
+              </button>
+            </>
+          )}
         </div>
       </div>
 
