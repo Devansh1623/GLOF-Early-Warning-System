@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../utils/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import { authFetch } from '../utils/helpers';
@@ -48,7 +48,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       {/* ── Logo ── */}
-      <div className="sidebar-logo">
+      <Link to="/" className="sidebar-logo" style={{ textDecoration: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <BrandMark />
           <div>
@@ -56,7 +56,7 @@ export default function Sidebar() {
             <span>Early Warning System</span>
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* ── Navigation ── */}
       <nav className="sidebar-nav">

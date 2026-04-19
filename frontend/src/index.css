@@ -184,6 +184,15 @@ a:hover { color: var(--primary-container); }
   padding: 28px 20px 22px;
   /* No border-bottom — gap gives the separation */
   margin-bottom: 4px;
+  cursor: pointer;
+  border-radius: var(--radius-xl);
+  transition: background 0.18s ease, opacity 0.18s ease;
+  display: block;
+}
+
+.sidebar-logo:hover {
+  background: rgba(196, 247, 249, 0.05);
+  opacity: 0.9;
 }
 
 .sidebar-logo h1 {
