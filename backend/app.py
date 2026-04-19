@@ -65,7 +65,19 @@ app_log = get_logger("glof.app")
 
 # ─── App Setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": os.environ.get("CORS_ORIGINS", "*")}})
+
+# Parse CORS origins — env var may be a comma-separated string or a single URL
+_raw_origins = os.environ.get("CORS_ORIGINS", "*")
+_cors_origins = [o.strip() for o in _raw_origins.split(",")] if "," in _raw_origins else _raw_origins
+
+CORS(
+    app,
+    resources={r"/api/*": {"origins": _cors_origins}},
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "X-Sensor-Signature"],
+    methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    expose_headers=["Content-Type", "Authorization"],
+)
 
 # Swagger / OpenAPI
 app.config["SWAGGER"] = {
@@ -387,13 +399,24 @@ def sse_stream():
             if message["type"] == "message":
                 yield f"data: {message['data']}\n\n"
 
+    # Determine the allowed origin for this response
+    req_origin = request.headers.get("Origin", "")
+    allowed_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",")]
+    if "*" in allowed_origins:
+        sse_origin = "*"
+    elif req_origin in allowed_origins:
+        sse_origin = req_origin
+    else:
+        sse_origin = allowed_origins[0] if allowed_origins else "*"
+
     return Response(
         stream_with_context(event_generator()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": os.environ.get("CORS_ORIGINS", "*"),
+            "Access-Control-Allow-Origin": sse_origin,
+            "Access-Control-Allow-Credentials": "true",
         },
     )
 
