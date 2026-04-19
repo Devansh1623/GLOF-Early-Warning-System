@@ -202,21 +202,27 @@ def create_demo_users(database):
             app_log.info(f"Created demo user: {u['email']}")
 
 
-# ─── Startup (wrapped so crashes don't kill workers) ─────────────────────────
-try:
-    ensure_indexes(db)
-except Exception as _e:
-    app_log.warning(f"ensure_indexes skipped: {_e}")
+# ─── Startup (non-blocking) ──────────────────────────────────────────────────
+import threading
 
-try:
-    seed_database(db)
-except Exception as _e:
-    app_log.warning(f"seed_database skipped: {_e}")
+def _run_startup_tasks():
+    try:
+        ensure_indexes(db)
+    except Exception as _e:
+        app_log.warning(f"ensure_indexes skipped: {_e}")
 
-try:
-    create_demo_users(db)
-except Exception as _e:
-    app_log.warning(f"create_demo_users skipped: {_e}")
+    try:
+        seed_database(db)
+    except Exception as _e:
+        app_log.warning(f"seed_database skipped: {_e}")
+
+    try:
+        create_demo_users(db)
+    except Exception as _e:
+        app_log.warning(f"create_demo_users skipped: {_e}")
+
+# Start initialization in background so Gunicorn healthchecks don't timeout
+threading.Thread(target=_run_startup_tasks, daemon=True).start()
 
 register_security_headers(app)
 register_error_handlers(app)
