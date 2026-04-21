@@ -8,6 +8,12 @@ export function AuthProvider({ children }) {
   const [token, setToken]   = useState(localStorage.getItem('glof_token'));
   const [loading, setLoading] = useState(true);
 
+  const logout = useCallback(() => {
+    localStorage.removeItem('glof_token');
+    setToken(null);
+    setUser(null);
+  }, []);
+
   useEffect(() => {
     if (token) {
       try {
@@ -54,12 +60,6 @@ export function AuthProvider({ children }) {
     if (!res.ok) throw new Error(data.error || 'Registration failed');
     return data;
   };
-
-  const logout = useCallback(() => {
-    localStorage.removeItem('glof_token');
-    setToken(null);
-    setUser(null);
-  }, []);
 
   const forgotPassword = async (email) => {
     const res = await fetchWithFailover('/api/auth/forgot-password', {
