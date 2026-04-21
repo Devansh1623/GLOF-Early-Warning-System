@@ -4,8 +4,8 @@
 function getDefaultApi() {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
   if (process.env.NODE_ENV === 'production') {
-    // e.g. glof-frontend.onrender.com → glof-backend.onrender.com
-    const host = window.location.hostname.replace('frontend', 'backend');
+    // e.g. glof-frontend.onrender.com → glof-ews-api.onrender.com
+    const host = window.location.hostname.replace('frontend', 'ews-api');
     return `https://${host}`;
   }
   return 'http://localhost:5000';
