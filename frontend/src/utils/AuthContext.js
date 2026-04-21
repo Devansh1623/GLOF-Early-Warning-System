@@ -12,13 +12,23 @@ export function AuthProvider({ children }) {
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        setUser({ email: payload.sub, role: payload.role, name: payload.name });
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          logout();
+        } else {
+          setUser({ email: payload.sub, role: payload.role, name: payload.name });
+        }
       } catch {
         logout();
       }
     }
     setLoading(false);
   }, [token]);
+
+  useEffect(() => {
+    const handleExpired = () => logout();
+    window.addEventListener('auth-expired', handleExpired);
+    return () => window.removeEventListener('auth-expired', handleExpired);
+  }, [logout]);
 
   const login = async (email, password) => {
     const res = await fetchWithFailover('/api/auth/login', {

@@ -39,7 +39,12 @@ export function authFetch(path, options = {}) {
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  return fetchWithFailover(path, { ...options, headers });
+  return fetchWithFailover(path, { ...options, headers }).then(res => {
+    if (res.status === 401) {
+      window.dispatchEvent(new Event('auth-expired'));
+    }
+    return res;
+  });
 }
 
 
