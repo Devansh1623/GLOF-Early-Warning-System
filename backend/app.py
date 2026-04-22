@@ -725,6 +725,7 @@ def ml_status():
 
 # ─── Health Checks ────────────────────────────────────────────────────────────
 @app.route("/health")
+@limiter.exempt
 def health():
     """
     Basic liveness check.
@@ -743,12 +744,14 @@ def health():
 
 
 @app.route("/health/live")
+@limiter.exempt
 def health_live():
     """Kubernetes liveness probe."""
     return jsonify({"status": "alive"}), 200
 
 
 @app.route("/health/ready")
+@limiter.exempt
 def health_ready():
     """
     Kubernetes readiness probe — checks DB and Redis.
@@ -778,6 +781,7 @@ def health_ready():
 
 
 @app.route("/health/detail")
+@limiter.exempt
 def health_detail():
     """
     Detailed health: DB + Redis status + last telemetry timestamp.
