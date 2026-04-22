@@ -4,7 +4,7 @@ import { authFetch, readFreshCache, riskBadgeClass, riskColor, timeAgo, writeCac
 import { useI18n } from '../utils/I18nContext';
 
 export default function AlertsPage() {
-  const { latestData, offlineMode } = useSSE();
+  const { latestData, offlineMode, connected } = useSSE();
   const { t } = useI18n();
   const [alerts, setAlerts] = useState(readFreshCache('alerts_history', 30) || []);
   const [liveAlerts, setLiveAlerts] = useState([]);
@@ -17,6 +17,17 @@ export default function AlertsPage() {
       }
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (connected && alerts.length === 0) {
+      authFetch('/api/alerts/?limit=100').then(r => r.json()).then((data) => {
+        if (Array.isArray(data)) {
+          setAlerts(data);
+          writeCache('alerts_history', data);
+        }
+      }).catch(() => {});
+    }
+  }, [connected, alerts.length]);
 
   useEffect(() => {
     if (!latestData?.alert?.alert) return;

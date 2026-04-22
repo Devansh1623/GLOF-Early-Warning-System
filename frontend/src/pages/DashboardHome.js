@@ -23,6 +23,25 @@ export default function DashboardHome() {
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (connected) {
+      if (!summary) {
+        authFetch('/api/dashboard/summary').then(r => r.json()).then((data) => {
+          setSummary(data);
+          writeCache('dashboard_summary', data);
+        }).catch(() => {});
+      }
+      if (lakes.length === 0) {
+        authFetch('/api/lakes/').then(r => r.json()).then(data => {
+          if (Array.isArray(data)) {
+            setLakes(data);
+            writeCache('dashboard_lakes', data);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [connected, summary, lakes.length]);
+
   // Stitch stat card definitions — tonal backgrounds, no gradient borders
   const stats = [
     {
