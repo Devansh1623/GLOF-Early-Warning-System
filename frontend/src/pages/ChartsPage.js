@@ -45,7 +45,7 @@ function GlacialTooltip({ active, payload, label }) {
 }
 
 export default function ChartsPage() {
-  const { lakeMap } = useSSE();
+  const { lakeMap, connected } = useSSE();
   const { t } = useI18n();
   const [lakes, setLakes]         = useState(readFreshCache('charts_lakes', 60) || []);
   const [selectedLake, setSelected] = useState(null);
@@ -56,7 +56,6 @@ export default function ChartsPage() {
   useEffect(() => {
     authFetch('/api/lakes/').then(r => r.json()).then(data => {
       if (Array.isArray(data) && data.length) {
-        // Sort lakes by ID (or name) to stabilize UI between refreshes
         const sortedData = data.sort((a, b) => a.id.localeCompare(b.id));
         setLakes(sortedData);
         writeCache('charts_lakes', sortedData);
@@ -64,6 +63,19 @@ export default function ChartsPage() {
       }
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (connected && lakes.length === 0) {
+      authFetch('/api/lakes/').then(r => r.json()).then(data => {
+        if (Array.isArray(data) && data.length) {
+          const sortedData = data.sort((a, b) => a.id.localeCompare(b.id));
+          setLakes(sortedData);
+          writeCache('charts_lakes', sortedData);
+          if (!selectedLake) setSelected(sortedData[0]);
+        }
+      }).catch(() => {});
+    }
+  }, [connected, lakes.length, selectedLake]);
 
   useEffect(() => {
     if (!selectedLake) return;

@@ -19,7 +19,7 @@ function estimatedExposure(lake, score) {
 }
 
 export default function MapPage() {
-  const { lakeMap, offlineMode } = useSSE();
+  const { lakeMap, offlineMode, connected } = useSSE();
   const { t } = useI18n();
   const [lakes, setLakes] = useState(readFreshCache('map_lakes', 30) || []);
   const [selectedLakeId, setSelectedLakeId] = useState('');
@@ -33,6 +33,18 @@ export default function MapPage() {
       }
     }).catch(() => {});
   }, [selectedLakeId]);
+
+  useEffect(() => {
+    if (connected && lakes.length === 0) {
+      authFetch('/api/lakes/').then(r => r.json()).then(data => {
+        if (Array.isArray(data)) {
+          setLakes(data);
+          writeCache('map_lakes', data);
+          if (!selectedLakeId && data[0]) setSelectedLakeId(data[0].id);
+        }
+      }).catch(() => {});
+    }
+  }, [connected, lakes.length, selectedLakeId]);
 
   const selectedLake = lakes.find(l => l.id === selectedLakeId) || lakes[0];
   const selectedLive = selectedLake ? lakeMap[selectedLake.id] : null;

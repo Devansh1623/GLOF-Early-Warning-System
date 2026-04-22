@@ -5,7 +5,7 @@ import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/I18nContext';
 
 export default function NotificationCenterPage() {
-  const { notifications, offlineMode } = useSSE();
+  const { notifications, offlineMode, connected } = useSSE();
   const { user } = useAuth();
   const { t } = useI18n();
   const [alerts, setAlerts] = useState([]);
@@ -20,6 +20,12 @@ export default function NotificationCenterPage() {
   useEffect(() => {
     loadAlerts();
   }, []);
+
+  useEffect(() => {
+    if (connected && alerts.length === 0) {
+      loadAlerts();
+    }
+  }, [connected, alerts.length]);
 
   const acknowledgeAlert = async (alertId) => {
     setBusyId(alertId);
