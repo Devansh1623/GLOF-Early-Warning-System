@@ -106,7 +106,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     default_limits=["200 per minute"],
-    storage_uri=_redis_url,
+    storage_uri="memory://",
 )
 
 # Prometheus Metrics
@@ -160,10 +160,14 @@ def write_audit_log(action: str, actor: str, details: dict = None):
 def is_alert_suppressed(lake_id: str, alert_type: str) -> bool:
     """Suppress duplicate alerts for the same lake/type inside the cooldown window."""
     cooldown_key = f"alert_cooldown:{lake_id}:{alert_type.lower()}"
-    if redis_client.get(cooldown_key):
-        return True
-    redis_client.setex(cooldown_key, ALERT_COOLDOWN_SECONDS, "1")
-    return False
+    try:
+        if redis_client.get(cooldown_key):
+            return True
+        redis_client.setex(cooldown_key, ALERT_COOLDOWN_SECONDS, "1")
+        return False
+    except Exception as e:
+        app_log.warning(f"Redis cooldown error, degrading gracefully: {e}")
+        return False
 
 
 def create_demo_users(database):
@@ -292,11 +296,15 @@ def receive_telemetry():
 
     # ── Velocity feature (rate-of-change from Redis rolling window) ──────────
     window_key = f"wl_window:{lake_id}"
-    redis_client.rpush(window_key, wl_rise)
-    redis_client.ltrim(window_key, -10, -1)  # Keep last 10 readings
-    redis_client.expire(window_key, 3600)
+    try:
+        redis_client.rpush(window_key, wl_rise)
+        redis_client.ltrim(window_key, -10, -1)  # Keep last 10 readings
+        redis_client.expire(window_key, 3600)
+        wl_history = [float(v) for v in redis_client.lrange(window_key, 0, -1)]
+    except Exception as e:
+        app_log.warning(f"Redis velocity error: {e}")
+        wl_history = [wl_rise]
 
-    wl_history = [float(v) for v in redis_client.lrange(window_key, 0, -1)]
     velocity = 0.0
     if len(wl_history) >= 2:
         velocity = (wl_history[-1] - wl_history[0]) / max(len(wl_history) - 1, 1)
@@ -399,7 +407,10 @@ def receive_telemetry():
 
     # ── Redis pub/sub ─────────────────────────────────────────────────────────
     payload = {**tel_doc, "alert": alert_info}
-    redis_client.publish("glof_stream", json.dumps(payload, default=str))
+    try:
+        redis_client.publish("glof_stream", json.dumps(payload, default=str))
+    except Exception as e:
+        app_log.warning(f"Redis publish error: {e}")
 
     telemetry_log.info(
         f"Telemetry received: {lake_id}",
@@ -421,12 +432,19 @@ def sse_stream():
         description: text/event-stream of telemetry + alert events
     """
     def event_generator():
-        pubsub = redis_client.pubsub()
-        pubsub.subscribe("glof_stream")
-        yield 'data: {"type": "connected"}\n\n'
-        for message in pubsub.listen():
-            if message["type"] == "message":
-                yield f"data: {message['data']}\n\n"
+        try:
+            pubsub = redis_client.pubsub()
+            pubsub.subscribe("glof_stream")
+            yield 'data: {"type": "connected"}\n\n'
+            for message in pubsub.listen():
+                if message["type"] == "message":
+                    yield f"data: {message['data']}\n\n"
+        except Exception as e:
+            app_log.warning(f"SSE Redis error: {e}")
+            yield 'data: {"type": "connected"}\n\n'
+            while True:
+                time.sleep(15)
+                yield 'data: {"type": "ping"}\n\n'
 
     # Determine the allowed origin for this response
     req_origin = request.headers.get("Origin", "")
@@ -776,7 +794,7 @@ def health_ready():
     except Exception:
         pass
 
-    ready = all(checks.values())
+    ready = checks["db"]
     return jsonify({"status": "ready" if ready else "not_ready", "checks": checks}), 200 if ready else 503
 
 
