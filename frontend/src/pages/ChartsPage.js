@@ -123,31 +123,15 @@ export default function ChartsPage() {
         <span className={riskBadgeClass(risk)} style={{ alignSelf: 'center' }}>{risk}</span>
       </div>
 
-      {/* ── Lake selector chips ── */}
-      <div style={{
-        display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20,
-        padding: '14px 16px', background: 'var(--surface-low)',
-        borderRadius: 'var(--radius-2xl)',
-      }}>
+      {/* Lake selector chips — horizontally scrollable on mobile */}
+      <div className="lake-chips-bar">
         {lakes.map(lake => {
           const isSelected = lake.id === selectedLake?.id;
           return (
             <button
               key={lake.id}
               onClick={() => setSelected(lake)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 999,
-                border: 'none',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-display)',
-                fontSize: '0.75rem', fontWeight: 500,
-                background: isSelected
-                  ? 'rgba(196, 247, 249, 0.18)'
-                  : 'var(--surface-high)',
-                color: isSelected ? 'var(--primary)' : 'var(--on-surface-variant)',
-                transition: 'all 0.18s ease',
-              }}
+              className={`lake-chip${isSelected ? ' selected' : ''}`}
             >
               {lake.name}
             </button>
@@ -157,7 +141,7 @@ export default function ChartsPage() {
 
       {/* ── Reading cards ── */}
       {selectedLake && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+        <div className="chart-metric-grid">
           {[
             {
               label: 'Water Level',
@@ -208,8 +192,8 @@ export default function ChartsPage() {
         </div>
       )}
 
-      {/* ── Charts ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      {/* ── Charts grid ── */}
+      <div className="chart-grid">
         {/* Water Level */}
         <div style={{
           padding: '20px', background: 'var(--surface-default)',
