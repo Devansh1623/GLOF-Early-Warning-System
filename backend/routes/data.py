@@ -8,7 +8,7 @@ from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from bson import ObjectId
 from core.logger import alert_log
 from core.schemas import validate_json, AdminEmailAlertSchema
-from tasks import enqueue_email_jobs
+from tasks import enqueue_email_jobs, enqueue_alert_push_notifications
 
 lakes_bp  = Blueprint("lakes",  __name__)
 events_bp = Blueprint("events", __name__)
@@ -264,6 +264,17 @@ def send_test_alert():
             }
         }
         _redis_client.publish("glof_stream", json.dumps(payload))
+        
+    # Trigger test push notifications
+    enqueue_alert_push_notifications({
+        "lake_id": lake_id,
+        "lake_name": lake_name,
+        "risk_level": "Critical" if alert_type == "Emergency" else "High",
+        "risk_score": test_score,
+        "alert_type": alert_type,
+        "alert_message": message,
+        "timestamp": timestamp,
+    })
 
     return jsonify({"message": f"Test {alert_type} alert sent for {lake_name}.", "alert": alert_doc}), 200
 
@@ -368,3 +379,31 @@ def list_email_jobs():
         .limit(min(int(request.args.get("limit", 50)), 200))
     )
     return jsonify(jobs), 200
+
+
+# ── Web Push Subscriptions ──────────────────────────────────────────────────
+import os
+
+@alerts_bp.route("/push/public-key", methods=["GET"])
+def get_push_public_key():
+    # Provide the VAPID public key to the frontend for subscription
+    public_key = os.environ.get("VAPID_PUBLIC_KEY", "BBNOZOeBo9BwRnnr2O4DJHeT2hikkxejeF65wlVyNUvMGMzkoWBxYFb3sxRJnP2gRGjwZG_sMTZoicNnpGVEvag")
+    return jsonify({"publicKey": public_key}), 200
+
+@alerts_bp.route("/push/subscribe", methods=["POST"])
+def subscribe_push():
+    """Save a push subscription sent by the frontend Service Worker."""
+    subscription = request.get_json()
+    if not subscription or not subscription.get("endpoint"):
+        return jsonify({"error": "Invalid subscription payload"}), 400
+        
+    _db_alerts.push_subscriptions.update_one(
+        {"endpoint": subscription["endpoint"]},
+        {"$set": {
+            "subscription_info": subscription, 
+            "updated_at": datetime.now(tz=timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    return jsonify({"message": "Subscribed to push notifications successfully"}), 201
+
