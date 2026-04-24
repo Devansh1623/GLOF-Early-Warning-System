@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import api from '../utils/api';
+import { fetchWithFailover } from '../utils/api';
 
 /**
  * Custom hook to manage Web Push notification subscriptions.
@@ -59,7 +59,8 @@ export function usePushNotifications() {
       const registration = await navigator.serviceWorker.ready;
       
       // Get the VAPID public key from backend
-      const { data } = await api.get('/alerts/push/public-key');
+      const res = await fetchWithFailover('/api/alerts/push/public-key');
+      const data = await res.json();
       const applicationServerKey = urlBase64ToUint8Array(data.publicKey);
 
       // Subscribe to PushManager
@@ -69,7 +70,11 @@ export function usePushNotifications() {
       });
 
       // Send the subscription to the backend
-      await api.post('/alerts/push/subscribe', subscription.toJSON());
+      await fetchWithFailover('/api/alerts/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription.toJSON())
+      });
 
       setIsSubscribed(true);
       return true;
