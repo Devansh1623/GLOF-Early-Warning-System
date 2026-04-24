@@ -5,6 +5,93 @@ import { useSSE } from '../hooks/useSSE';
 import { authFetch } from '../utils/helpers';
 import { useI18n } from '../utils/I18nContext';
 
+// ── Mobile Bottom Navigation Bar ────────────────────────────
+export function MobileBottomNav() {
+  const { user, logout } = useAuth();
+  const sseCtx = useSSE();
+  const { t } = useI18n();
+  const location = useLocation();
+  const [showMenu, setShowMenu] = useState(false);
+
+  const mainItems = [
+    { to: '/dashboard',               label: 'Home',    icon: <HomeIcon /> },
+    { to: '/dashboard/map',           label: 'Map',     icon: <MapIcon /> },
+    { to: '/dashboard/alerts',        label: 'Alerts',  icon: <AlertIcon />, live: sseCtx?.connected },
+    { to: '/dashboard/charts',        label: 'Charts',  icon: <ChartIcon /> },
+    { to: '/dashboard/events',        label: 'Events',  icon: <EventIcon /> },
+  ];
+
+  return (
+    <>
+      {/* Mobile top bar */}
+      <div className="mobile-topbar">
+        <div className="mobile-brand">
+          <BrandMark />
+          <span>GLOFWatch</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {sseCtx?.connected && (
+            <span className="dot-live" style={{ width: 7, height: 7 }} title="Live stream active" />
+          )}
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setShowMenu(!showMenu)}
+            aria-label="More options"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <circle cx="12" cy="5" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="19" r="1.2" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Slide-down extra menu */}
+      {showMenu && (
+        <div className="mobile-extra-menu" onClick={() => setShowMenu(false)}>
+          <NavLink to="/dashboard/notifications" className={({ isActive }) => isActive ? 'active' : ''}>
+            <BellIcon /> Notifications
+          </NavLink>
+          {user?.role === 'admin' && (
+            <NavLink to="/dashboard/admin" className={({ isActive }) => isActive ? 'active' : ''}>
+              <AdminIcon /> Admin
+            </NavLink>
+          )}
+          <div className="mobile-menu-divider" />
+          <div className="mobile-user-row">
+            <div>
+              <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--on-surface)' }}>{user?.name || user?.email}</div>
+              <div style={{ fontSize: '0.625rem', color: 'var(--outline)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{user?.role}</div>
+            </div>
+            <button className="btn btn-outline" style={{ fontSize: '0.6875rem', padding: '6px 14px' }} onClick={logout}>
+              Logout
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom tab bar */}
+      <nav className="mobile-bottom-nav">
+        {mainItems.map(item => {
+          const isActive = location.pathname === item.to;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={`mobile-nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="mobile-nav-icon">
+                {item.icon}
+                {item.live && <span className="mobile-nav-badge" />}
+              </span>
+              <span className="mobile-nav-label">{item.label}</span>
+            </NavLink>
+          );
+        })}
+      </nav>
+    </>
+  );
+}
+
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const sseCtx = useSSE();

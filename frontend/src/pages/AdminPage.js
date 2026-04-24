@@ -14,8 +14,8 @@ export default function AdminPage() {
   // New event form
   const [newEvent, setNewEvent] = useState({ event_id: '', title: '', location: '', state: '', date: '', severity: 'High', impact_summary: '', peak_discharge_m3s: '', source: '' });
 
-  // Test alert form
-  const [testAlert, setTestAlert] = useState({ lake_id: 'GL001', lake_name: 'South Lhonak Lake', type: 'Warning', message: '' });
+  // Test alert form — lake_id starts empty; synced once lakes load
+  const [testAlert, setTestAlert] = useState({ lake_id: '', lake_name: '', type: 'Warning', message: '' });
   const [testAlertSending, setTestAlertSending] = useState(false);
   const [emailForm, setEmailForm] = useState({ subject: '', message: '' });
   const [emailSending, setEmailSending] = useState(false);
@@ -24,7 +24,19 @@ export default function AdminPage() {
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    authFetch('/api/lakes/').then(r => r.json()).then(d => Array.isArray(d) && setLakes(d));
+    authFetch('/api/lakes/')
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d) && d.length > 0) {
+          setLakes(d);
+          // Auto-select first lake so the form is never empty
+          setTestAlert(prev => prev.lake_id ? prev : {
+            ...prev,
+            lake_id: d[0].id,
+            lake_name: d[0].name,
+          });
+        }
+      });
     authFetch('/api/events/').then(r => r.json()).then(d => Array.isArray(d) && setEvents(d));
     authFetch('/api/alerts/email/jobs?limit=10').then(r => r.json()).then(d => Array.isArray(d) && setEmailJobs(d)).catch(() => {});
   }, []);
@@ -174,7 +186,10 @@ export default function AdminPage() {
                     const lake = lakes.find(l => l.id === e.target.value);
                     setTestAlert({ ...testAlert, lake_id: e.target.value, lake_name: lake?.name || '' });
                   }}>
-                  {lakes.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  {lakes.length === 0 && (
+                    <option value="" disabled>Loading lakes…</option>
+                  )}
+                  {lakes.map(l => <option key={l.id} value={l.id}>{l.name} ({l.id})</option>)}
                 </select>
               </div>
               <div>
