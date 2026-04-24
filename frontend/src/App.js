@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './utils/AuthContext';
 import { I18nProvider } from './utils/I18nContext';
 import { SSEProvider } from './utils/SSEContext';
-import Sidebar from './components/Sidebar';
+import Sidebar, { MobileBottomNav } from './components/Sidebar';
 import NotificationToast from './components/NotificationToast';
 import ErrorBoundary from './components/ErrorBoundary';
 import LandingPage from './pages/LandingPage';
@@ -34,6 +34,8 @@ function DashboardLayout({ children }) {
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
+      {/* Mobile-only: bottom nav bar + top bar */}
+      <MobileBottomNav />
     </SSEProvider>
   );
 }

@@ -1626,3 +1626,151 @@ tr:hover td { background: rgba(196, 247, 249, 0.04); }
   .about-nav { gap: 16px; padding: 12px 20px 16px; }
 }
 
+
+/* ===================================================================
+   Mobile / Responsive - Full Dashboard Overhaul
+   Breakpoints: <=1024px tablet, <=768px phone, <=400px small phone
+   =================================================================== */
+
+/* Hidden on desktop, shown on mobile */
+.mobile-topbar     { display: none; }
+.mobile-bottom-nav { display: none; }
+.mobile-extra-menu { display: none; }
+
+/* === TABLET (<=1024px) === */
+@media (max-width: 1024px) {
+  .sidebar { width: 68px; overflow: hidden; }
+  .sidebar-logo h1, .sidebar-logo span,
+  .sidebar-section, .sidebar-footer .user-info,
+  .sidebar-footer .user-role { display: none; }
+  .sidebar-logo { padding: 16px 12px; justify-content: center; }
+  .sidebar-nav a { justify-content: center; padding: 12px; }
+  .sidebar-nav a svg { width: 20px; height: 20px; }
+  .sidebar-footer { flex-direction: column; align-items: center; gap: 6px; padding: 10px 8px; }
+  .sidebar-footer button { padding: 5px 8px; font-size: 0.5625rem; }
+}
+
+/* === PHONE (<=768px) === */
+@media (max-width: 768px) {
+  .sidebar { display: none !important; }
+  .app-layout { flex-direction: column; height: auto; min-height: 100vh; }
+  .main-content { padding-bottom: 72px; margin-top: 56px; }
+
+  /* Mobile Top Bar */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 200;
+    height: 56px;
+    padding: 0 16px;
+    background: var(--surface-lowest);
+    box-shadow: 0 1px 0 rgba(64,72,72,0.2), 0 2px 12px rgba(2,14,31,0.4);
+  }
+  .mobile-brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-display); font-weight: 700;
+    font-size: 1rem; color: var(--primary); letter-spacing: -0.02em;
+  }
+  .mobile-menu-btn {
+    background: none; border: 1px solid var(--ghost-border);
+    border-radius: var(--radius-md); color: var(--on-surface-variant);
+    width: 36px; height: 36px; display: flex; align-items: center;
+    justify-content: center; cursor: pointer; transition: background 0.15s;
+  }
+  .mobile-menu-btn:hover { background: rgba(196,247,249,0.07); color: var(--primary); }
+
+  /* Extra slide-down menu */
+  .mobile-extra-menu {
+    display: flex; flex-direction: column;
+    position: fixed; top: 56px; left: 0; right: 0; z-index: 199;
+    background: var(--surface-low); border-bottom: 1px solid var(--ghost-border);
+    padding: 6px 0 10px; box-shadow: 0 8px 24px rgba(2,14,31,0.5);
+    animation: fadeRise 0.18s ease;
+  }
+  .mobile-extra-menu a {
+    display: flex; align-items: center; gap: 12px; padding: 13px 20px;
+    font-family: var(--font-display); font-size: 0.875rem; font-weight: 500;
+    color: var(--on-surface-variant); text-decoration: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .mobile-extra-menu a svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .mobile-extra-menu a:hover, .mobile-extra-menu a.active {
+    background: rgba(196,247,249,0.06); color: var(--primary);
+  }
+  .mobile-menu-divider { height: 1px; background: var(--ghost-border); margin: 8px 16px; }
+  .mobile-user-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 10px 20px 0;
+  }
+
+  /* Bottom Tab Bar */
+  .mobile-bottom-nav {
+    display: flex; align-items: center; justify-content: space-around;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    height: 62px; background: var(--surface-lowest);
+    border-top: 1px solid rgba(64,72,72,0.2);
+    box-shadow: 0 -4px 20px rgba(2,14,31,0.4);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .mobile-nav-item {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; flex: 1; padding: 8px 4px;
+    text-decoration: none; color: var(--outline);
+    transition: color 0.15s; min-height: 48px;
+  }
+  .mobile-nav-item.active { color: var(--primary); }
+  .mobile-nav-item:hover  { color: var(--on-surface-variant); }
+  .mobile-nav-icon {
+    position: relative; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mobile-nav-icon svg { width: 21px; height: 21px; }
+  .mobile-nav-badge {
+    position: absolute; top: -2px; right: -3px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--primary); border: 1.5px solid var(--surface-lowest);
+    animation: riskPulse 2.5s ease-in-out infinite;
+  }
+  .mobile-nav-label {
+    font-family: var(--font-display); font-size: 0.5625rem;
+    font-weight: 600; letter-spacing: -0.01em;
+  }
+
+  /* General layout */
+  .page-header { flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  .page-title  { font-size: 1.25rem; }
+  .card, .card-bordered, .card-glass { padding: 16px; border-radius: var(--radius-xl); }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 460px; }
+  td, th { padding: 10px 12px; font-size: 0.75rem; }
+  .btn { min-height: 44px; }
+
+  /* Auth */
+  .auth-shell { grid-template-columns: 1fr !important; }
+  .auth-visual { display: none; }
+  .auth-panel { padding: 40px 24px 32px; min-height: 100svh; }
+  .auth-panel h2 { font-size: 1.5rem; }
+
+  /* Landing */
+  .landing-nav { padding: 16px 20px; flex-wrap: wrap; gap: 10px; }
+  .nav-links { display: none; }
+  .landing-hero { grid-template-columns: 1fr !important; padding: 40px 20px 64px; gap: 32px; }
+  .hero-visual { display: none; }
+  .hero-title { font-size: 2rem; }
+  .section { padding: 48px 20px; }
+  .feature-list { grid-template-columns: 1fr !important; }
+  .step-grid { grid-template-columns: 1fr !important; }
+  .metric-row { grid-template-columns: 1fr 1fr !important; }
+  .cta-band { margin: 0 16px 32px; padding: 28px 20px; flex-direction: column; align-items: flex-start; }
+  .landing-footer { padding: 24px 20px; flex-direction: column; gap: 10px; }
+}
+
+/* === SMALL PHONE (<=400px) === */
+@media (max-width: 400px) {
+  .hero-title { font-size: 1.75rem; }
+  .auth-panel { padding: 28px 16px 20px; }
+  .mobile-topbar { padding: 0 12px; }
+  .metric-row { grid-template-columns: 1fr !important; }
+}
