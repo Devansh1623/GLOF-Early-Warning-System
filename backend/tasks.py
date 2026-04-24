@@ -7,6 +7,8 @@ from pymongo import MongoClient
 from celery_app import celery_app
 from core.logger import get_logger
 from core.notifications import send_email, send_alert_email
+from core.push import send_web_push
+
 
 
 task_log = get_logger("glof.tasks")
@@ -65,7 +67,44 @@ def enqueue_alert_emails(users, alert_payload: dict):
     return {"queued": queued, "skipped": skipped}
 
 
+# ── Web Push queue ────────────────────────────────────────────────────────────
+
+def enqueue_alert_push_notifications(alert_payload: dict):
+    """
+    Queue Web Push notifications for all subscribed devices.
+    """
+    db = get_db()
+    queued = 0
+
+    subscriptions = list(db.push_subscriptions.find({}))
+    
+    for sub in subscriptions:
+        notification_id = str(uuid.uuid4())
+        db.notification_jobs.insert_one({
+            "_id": notification_id,
+            "channel": "web_push",
+            "kind": "alert",
+            "to": sub.get("endpoint", ""),
+            "subscription_info": sub.get("subscription_info", {}),
+            "payload": alert_payload,
+            "status": "queued",
+            "attempts": 0,
+            "metadata": {
+                "kind": "risk_alert",
+                "lake_id": alert_payload.get("lake_id", ""),
+                "risk_score": alert_payload.get("risk_score", 0),
+                "alert_type": alert_payload.get("alert_type", ""),
+            },
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        })
+        deliver_push_task.delay(notification_id)
+        queued += 1
+
+    return {"queued": queued}
+
+
 # ── Broadcast email queue (admin broadcasts) ──────────────────────────────────
+
 
 def enqueue_email_jobs(users, subject: str, text: str, html: str = "", metadata: dict = None):
     """Queue generic broadcast emails via the generic send_email path."""
@@ -185,3 +224,45 @@ def _record_result(db, notification_id, notification, result):
             extra={"notification_id": notification_id, "reason": result.get("reason", "unknown")},
         )
     db.notification_jobs.update_one({"_id": notification_id}, {"$set": update})
+
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=5,
+)
+def deliver_push_task(self, notification_id: str):
+    """Deliver a web push notification using send_web_push()."""
+    db = get_db()
+    notification = db.notification_jobs.find_one({"_id": notification_id})
+    if not notification:
+        task_log.warning("Notification job missing", extra={"notification_id": notification_id})
+        return {"ok": False, "reason": "job_missing"}
+
+    sub_info = notification.get("subscription_info", {})
+    payload = notification.get("payload", {})
+    
+    # Format message for the service worker
+    message_data = {
+        "title": f"GLOF {payload.get('alert_type', 'Alert')}: {payload.get('lake_name', 'Lake')}",
+        "body": payload.get("alert_message", "A new alert has been triggered."),
+        "url": "/notifications", 
+        "icon": "/logo192.png",
+        "data": payload
+    }
+    
+    result = send_web_push(sub_info, message_data)
+    
+    if not result.get("ok"):
+        status_code = result.get("status_code")
+        if status_code in [404, 410]:
+            # Subscription is gone
+            db.push_subscriptions.delete_one({"endpoint": sub_info.get("endpoint")})
+            task_log.info("Removed expired push subscription", extra={"endpoint": sub_info.get("endpoint")})
+            return result
+        raise RuntimeError(str(result.get("reason") or "delivery_failed"))
+        
+    return result

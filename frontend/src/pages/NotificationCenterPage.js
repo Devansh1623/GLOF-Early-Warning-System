@@ -3,11 +3,13 @@ import { authFetch, riskBadgeClass, timeAgo } from '../utils/helpers';
 import { useSSE } from '../hooks/useSSE';
 import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/I18nContext';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 export default function NotificationCenterPage() {
   const { notifications, offlineMode, connected } = useSSE();
   const { user } = useAuth();
   const { t } = useI18n();
+  const { isSupported, isSubscribed, subscribe, unsubscribe, loading } = usePushNotifications();
   const [alerts, setAlerts] = useState([]);
   const [busyId, setBusyId] = useState('');
 
@@ -43,14 +45,26 @@ export default function NotificationCenterPage() {
 
   return (
     <div style={{ padding: '28px 32px' }} className="animate-fade">
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2 className="page-title">{t.notificationCenter}</h2>
           <p className="page-subtitle">Live alert stream, acknowledgement status, and operator actions.</p>
         </div>
-        {offlineMode && (
-          <div className="badge badge-moderate" style={{ fontSize: 12 }}>{t.offlineCache}</div>
-        )}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {offlineMode && (
+            <div className="badge badge-moderate" style={{ fontSize: 12 }}>{t.offlineCache}</div>
+          )}
+          {isSupported && (
+            <button 
+              className={`btn ${isSubscribed ? 'btn-outline' : 'btn-primary'}`}
+              onClick={isSubscribed ? unsubscribe : subscribe}
+              disabled={loading}
+              style={{ fontSize: '0.8125rem' }}
+            >
+              {loading ? 'Wait...' : isSubscribed ? 'Disable Push Alerts' : 'Enable Push Alerts'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="notif-grid">

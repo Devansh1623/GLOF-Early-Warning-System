@@ -50,7 +50,7 @@ from core.logger import telemetry_log, alert_log, audit_log, get_logger
 from core.middleware import register_security_headers, register_error_handlers
 from core.db_indexes import ensure_indexes
 try:
-    from tasks import enqueue_email_jobs, enqueue_alert_emails
+    from tasks import enqueue_email_jobs, enqueue_alert_emails, enqueue_alert_push_notifications
     _CELERY_AVAILABLE = True
 except ImportError:
     _CELERY_AVAILABLE = False
@@ -60,6 +60,9 @@ except ImportError:
     def enqueue_alert_emails(*args, **kwargs):  # noqa: E301
         """Fallback when Celery is unavailable."""
         return {"queued": 0, "skipped": []}
+    def enqueue_alert_push_notifications(*args, **kwargs):  # noqa: E301
+        """Fallback when Celery is unavailable."""
+        return {"queued": 0}
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv()
@@ -392,6 +395,7 @@ def receive_telemetry():
 
             if users:
                 q = enqueue_alert_emails(users, alert_payload)
+                push_q = enqueue_alert_push_notifications(alert_payload)
                 app_log.info(
                     "Alert emails queued",
                     extra={
@@ -400,8 +404,10 @@ def receive_telemetry():
                         "risk_score": risk["score"],
                         "queued":     q["queued"],
                         "skipped":    len(q["skipped"]),
+                        "push_queued": push_q["queued"],
                     },
                 )
+
         else:
             alert_info = {**alert_info, "suppressed": True, "cooldown_seconds": ALERT_COOLDOWN_SECONDS}
 
