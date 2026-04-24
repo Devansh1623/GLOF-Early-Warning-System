@@ -141,7 +141,7 @@ export default function DashboardHome() {
       )}
 
       {/* ── KPI Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div className="kpi-grid">
         {stats.map(s => (
           <div key={s.label} style={{
             padding: '18px 20px',

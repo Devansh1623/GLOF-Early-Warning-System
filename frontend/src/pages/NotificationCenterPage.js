@@ -53,7 +53,7 @@ export default function NotificationCenterPage() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr', gap: 20 }}>
+      <div className="notif-grid">
         <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 20 }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', color: 'var(--on-surface)', marginBottom: 14 }}>Live feed</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 520, overflowY: 'auto' }}>

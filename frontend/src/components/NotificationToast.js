@@ -34,11 +34,7 @@ export default function NotificationToast() {
   if (toasts.length === 0) return null;
 
   return (
-    <div style={{
-      position: 'fixed', top: 20, right: 20, zIndex: 99999,
-      display: 'flex', flexDirection: 'column', gap: 10,
-      pointerEvents: 'none', maxWidth: 380,
-    }}>
+    <div className="toast-container">
       {toasts.map(toast => {
         const isCritical = toast.severity === 'critical' || toast.type === 'Emergency';
         // Stitch palette: Critical = error rose, Warning = secondary mist

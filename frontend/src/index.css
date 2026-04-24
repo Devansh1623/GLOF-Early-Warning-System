@@ -1774,3 +1774,99 @@ tr:hover td { background: rgba(196, 247, 249, 0.04); }
   .mobile-topbar { padding: 0 12px; }
   .metric-row { grid-template-columns: 1fr !important; }
 }
+
+/* ===================================================================
+   Component-Level Responsive Classes (mobile polish pass 2)
+   =================================================================== */
+
+/* Toast container */
+.toast-container {
+  position: fixed;
+  top: 20px; right: 20px;
+  z-index: 99999;
+  display: flex; flex-direction: column; gap: 10px;
+  pointer-events: none; max-width: 380px;
+}
+
+/* Notification Center two-panel grid */
+.notif-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr;
+  gap: 20px;
+}
+
+/* KPI summary cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* Lake chip selector */
+.lake-chips-bar {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 20px; padding: 14px 16px;
+  background: var(--surface-low);
+  border-radius: var(--radius-2xl);
+}
+.lake-chip {
+  padding: 6px 14px; border-radius: 999px; border: none;
+  cursor: pointer; font-family: var(--font-display);
+  font-size: 0.75rem; font-weight: 500;
+  background: var(--surface-high); color: var(--on-surface-variant);
+  transition: all 0.18s ease; white-space: nowrap; flex-shrink: 0;
+}
+.lake-chip.selected { background: rgba(196,247,249,0.18); color: var(--primary); }
+
+/* Chart metric cards grid */
+.chart-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px; margin-bottom: 20px;
+}
+
+/* Chart plots grid */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* Toast keyframes */
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(8px) scale(0.95); }
+}
+
+/* Mobile overrides for component classes */
+@media (max-width: 768px) {
+  /* Toast moves to bottom above bottom nav */
+  .toast-container {
+    top: auto;
+    bottom: 72px;
+    right: 12px; left: 12px;
+    max-width: 100%;
+  }
+
+  /* Notification grid stacks vertically */
+  .notif-grid { grid-template-columns: 1fr; }
+
+  /* KPI: 2-col grid */
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+  /* Lake chips: horizontal scroll, no wrap */
+  .lake-chips-bar {
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px; scrollbar-width: none;
+  }
+  .lake-chips-bar::-webkit-scrollbar { display: none; }
+  .lake-chip { padding: 8px 16px; font-size: 0.8125rem; }
+
+  /* Chart metrics: 2x2 */
+  .chart-metric-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+  /* Charts: single column */
+  .chart-grid { grid-template-columns: 1fr; gap: 12px; }
+}
