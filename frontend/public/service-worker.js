@@ -1,7 +1,15 @@
 self.addEventListener('push', function(event) {
   let data = {};
   if (event.data) {
-    data = event.data.json();
+    try {
+      data = event.data.json();
+      console.log('[Service Worker] Push event received with data:', data);
+    } catch (e) {
+      console.error('[Service Worker] Error parsing push data as JSON:', e);
+      data = { body: event.data.text() };
+    }
+  } else {
+    console.log('[Service Worker] Push event received with no data.');
   }
 
   const title = data.title || 'GLOFWatch Alert';
@@ -39,4 +47,17 @@ self.addEventListener('notificationclick', function(event) {
       }
     })
   );
+});
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'TEST_NOTIFICATION') {
+    const data = event.data.payload;
+    event.waitUntil(
+      self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: '/logo192.png',
+        badge: '/logo192.png',
+        vibrate: [200, 100, 200]
+      })
+    );
+  }
 });

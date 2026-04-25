@@ -8,6 +8,7 @@ from celery_app import celery_app
 from core.logger import get_logger
 from core.notifications import send_email, send_alert_email
 from core.push import send_web_push
+from core.sms import send_sms, send_whatsapp
 
 
 
@@ -101,6 +102,57 @@ def enqueue_alert_push_notifications(alert_payload: dict):
         queued += 1
 
     return {"queued": queued}
+
+
+# ── SMS queue ─────────────────────────────────────────────────────────────────
+
+def enqueue_alert_sms(users, alert_payload: dict):
+    """
+    Queue Twilio SMS alerts for opted-in users with valid phone numbers.
+    """
+    db = get_db()
+    queued = 0
+    skipped = []
+
+    # Simplified message for SMS
+    message_body = (
+        f"GLOF {alert_payload.get('alert_type', 'Alert')}: {alert_payload.get('lake_name', 'Lake')}\n"
+        f"Risk: {alert_payload.get('risk_score', 0):.1f}/100\n"
+        f"{alert_payload.get('alert_message', '')}\n"
+        f"Check Dashboard immediately."
+    )
+
+    for user in users:
+        phone = (user.get("phone") or "").strip()
+        # Fallback to a test number or specific structure if no phone field
+        if not phone:
+            skipped.append({"email": user.get("email"), "reason": "missing_phone"})
+            continue
+
+        notification_id = str(uuid.uuid4())
+        db.notification_jobs.insert_one({
+            "_id": notification_id,
+            "channel": "sms",
+            "kind": "alert",
+            "to": phone,
+            "payload": alert_payload,
+            "message_body": message_body,
+            "status": "queued",
+            "attempts": 0,
+            "metadata": {
+                "kind": "risk_alert",
+                "lake_id": alert_payload.get("lake_id", ""),
+                "risk_score": alert_payload.get("risk_score", 0),
+                "alert_type": alert_payload.get("alert_type", ""),
+            },
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        })
+        deliver_sms_task.delay(notification_id)
+        queued += 1
+
+    return {"queued": queued, "skipped": skipped}
+
+
 
 
 # ── Broadcast email queue (admin broadcasts) ──────────────────────────────────
@@ -266,3 +318,31 @@ def deliver_push_task(self, notification_id: str):
         raise RuntimeError(str(result.get("reason") or "delivery_failed"))
         
     return result
+
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=5,
+)
+def deliver_sms_task(self, notification_id: str):
+    """Deliver a text message using Twilio send_sms()."""
+    db = get_db()
+    notification = db.notification_jobs.find_one({"_id": notification_id})
+    if not notification:
+        task_log.warning("Notification job missing", extra={"notification_id": notification_id})
+        return {"ok": False, "reason": "job_missing"}
+
+    result = send_sms(
+        notification.get("to", ""),
+        notification.get("message_body", "")
+    )
+    
+    _record_result(db, notification_id, notification, result)
+    if not result.get("ok"):
+        raise RuntimeError(str(result.get("reason") or "delivery_failed"))
+    return result
+

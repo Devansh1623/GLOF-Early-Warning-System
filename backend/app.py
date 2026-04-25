@@ -50,7 +50,7 @@ from core.logger import telemetry_log, alert_log, audit_log, get_logger
 from core.middleware import register_security_headers, register_error_handlers
 from core.db_indexes import ensure_indexes
 try:
-    from tasks import enqueue_email_jobs, enqueue_alert_emails, enqueue_alert_push_notifications
+    from tasks import enqueue_email_jobs, enqueue_alert_emails, enqueue_alert_push_notifications, enqueue_alert_sms
     _CELERY_AVAILABLE = True
 except ImportError:
     _CELERY_AVAILABLE = False
@@ -63,6 +63,9 @@ except ImportError:
     def enqueue_alert_push_notifications(*args, **kwargs):  # noqa: E301
         """Fallback when Celery is unavailable."""
         return {"queued": 0}
+    def enqueue_alert_sms(*args, **kwargs):  # noqa: E301
+        """Fallback when Celery is unavailable."""
+        return {"queued": 0, "skipped": []}
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv()
@@ -396,15 +399,21 @@ def receive_telemetry():
             if users:
                 q = enqueue_alert_emails(users, alert_payload)
                 push_q = enqueue_alert_push_notifications(alert_payload)
+                
+                # Send SMS for Critical and Emergency alerts
+                sms_q = {"queued": 0, "skipped": []}
+                if risk["level"] in ["Critical", "Emergency"]:
+                    sms_q = enqueue_alert_sms(users, alert_payload)
+                
                 app_log.info(
-                    "Alert emails queued",
+                    "Alert notifications queued",
                     extra={
                         "lake_id":    lake_id,
                         "alert_type": alert_info["type"],
                         "risk_score": risk["score"],
-                        "queued":     q["queued"],
-                        "skipped":    len(q["skipped"]),
+                        "emails_queued": q["queued"],
                         "push_queued": push_q["queued"],
+                        "sms_queued": sms_q["queued"]
                     },
                 )
 
