@@ -411,3 +411,47 @@ def subscribe_push():
     )
     return jsonify({"message": "Subscribed to push notifications successfully"}), 201
 
+
+@alerts_bp.route("/push/broadcast", methods=["POST"])
+@jwt_required()
+def push_broadcast():
+    """Admin-only: send a custom push notification to all subscribed devices."""
+    try:
+        claims = get_jwt()
+        if claims.get("role") != "admin":
+            return jsonify({"error": "Admin access required"}), 403
+
+        data = request.get_json() or {}
+        title   = data.get("title", "GLOFWatch Alert")
+        body    = data.get("body", "")
+        lake_id = data.get("lake_id", "GL001")
+        lake_name = data.get("lake_name", "Glacial Lake")
+
+        if not body:
+            return jsonify({"error": "Message body is required"}), 400
+
+        # Count subscribed devices
+        count = _db_alerts.push_subscriptions.count_documents({})
+        if count == 0:
+            return jsonify({"message": "No subscribed devices found.", "sent": 0}), 200
+
+        timestamp = datetime.utcnow().isoformat() + "Z"
+
+        # Reuse the existing push notification pipeline
+        enqueue_alert_push_notifications({
+            "lake_id": lake_id,
+            "lake_name": lake_name,
+            "risk_level": "Critical",
+            "risk_score": 80.0,
+            "alert_type": title,
+            "alert_message": body,
+            "timestamp": timestamp,
+        })
+
+        alert_log.info("Admin push broadcast sent", extra={"title": title, "device_count": count})
+        return jsonify({"message": f"Push notification queued for {count} device(s).", "sent": count}), 200
+
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+

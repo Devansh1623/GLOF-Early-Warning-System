@@ -21,6 +21,11 @@ export default function AdminPage() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailJobs, setEmailJobs] = useState([]);
 
+  // Push broadcast form
+  const [pushForm, setPushForm] = useState({ title: 'GLOFWatch Emergency Alert', body: '' });
+  const [pushSending, setPushSending] = useState(false);
+  const [pushResult, setPushResult] = useState('');
+
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
@@ -137,6 +142,30 @@ export default function AdminPage() {
     setEmailSending(false);
   };
 
+  const handlePushBroadcast = async (e) => {
+    e.preventDefault();
+    setPushResult('');
+    setPushSending(true);
+    try {
+      const res = await authFetch('/api/alerts/push/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: pushForm.title,
+          body: pushForm.body,
+          lake_id: testAlert.lake_id || 'GL001',
+          lake_name: testAlert.lake_name || 'Glacial Lake',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Push broadcast failed');
+      setPushResult(`✓ ${data.message}`);
+      setPushForm(prev => ({ ...prev, body: '' }));
+    } catch (err) {
+      setPushResult(`✗ ${err.message}`);
+    }
+    setPushSending(false);
+  };
+
   return (
     <div style={{ padding: '28px 32px' }} className="animate-fade">
       <div className="page-header">
@@ -171,6 +200,8 @@ export default function AdminPage() {
 
       {/* Test Alerts Tab */}
       {tab === 'alerts' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Row 1: SSE Test Alert + Email Broadcast */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 24 }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', marginBottom: 4, color: 'var(--on-surface)' }}>Send Test Alert</div>
@@ -287,6 +318,55 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
+        </div>
+
+        {/* Row 2: Push Notification Broadcast — full width */}
+        <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <span style={{ fontSize: 20 }}>📲</span>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', color: 'var(--on-surface)' }}>
+              Send Push Notification to All Devices
+            </div>
+          </div>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', marginBottom: 20, lineHeight: 1.6 }}>
+            Sends a Web Push notification directly to every subscribed mobile device — works even when the app is in the background or closed.
+          </div>
+          <form onSubmit={handlePushBroadcast} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 12, alignItems: 'end' }}>
+            <div>
+              <label style={labelStyle}>Notification Title</label>
+              <input className="input"
+                value={pushForm.title}
+                onChange={e => setPushForm(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="GLOFWatch Emergency Alert"
+                required
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Message Body</label>
+              <input className="input"
+                value={pushForm.body}
+                onChange={e => setPushForm(prev => ({ ...prev, body: e.target.value }))}
+                placeholder="Immediate evacuation advised for downstream communities…"
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn-danger"
+              disabled={pushSending || !pushForm.body.trim()}
+              style={{ padding: '12px 20px', whiteSpace: 'nowrap' }}>
+              {pushSending ? '⏳ Sending…' : '📲 Push to All Devices'}
+            </button>
+          </form>
+          {pushResult && (
+            <div style={{
+              marginTop: 12, padding: '8px 14px', borderRadius: 'var(--radius-xl)',
+              fontSize: '0.8125rem', fontFamily: 'var(--font-body)',
+              background: pushResult.startsWith('✓') ? 'rgba(158, 207, 209, 0.08)' : 'rgba(255, 180, 171, 0.08)',
+              color: pushResult.startsWith('✓') ? 'var(--risk-low)' : 'var(--error)',
+              border: `1px solid ${pushResult.startsWith('✓') ? 'rgba(158,207,209,0.2)' : 'rgba(255,180,171,0.2)'}`,
+            }}>{pushResult}</div>
+          )}
+        </div>
+
         </div>
       )}
 
