@@ -212,71 +212,75 @@ def resolve_alert(alert_id):
 @jwt_required()
 def send_test_alert():
     """Admin-only: Send a test alert that broadcasts via Redis pub/sub."""
-    claims = get_jwt()
-    if claims.get("role") != "admin":
-        return jsonify({"error": "Admin access required"}), 403
+    try:
+        claims = get_jwt()
+        if claims.get("role") != "admin":
+            return jsonify({"error": "Admin access required"}), 403
 
-    data = request.get_json() or {}
-    lake_id   = data.get("lake_id", "GL001")
-    lake_name = data.get("lake_name", "South Lhonak Lake")
-    alert_type = data.get("type", "Warning")
-    message   = data.get("message", f"[TEST] This is a test {alert_type} alert sent by admin.")
+        data = request.get_json() or {}
+        lake_id   = data.get("lake_id", "GL001")
+        lake_name = data.get("lake_name", "South Lhonak Lake")
+        alert_type = data.get("type", "Warning")
+        message   = data.get("message", f"[TEST] This is a test {alert_type} alert sent by admin.")
 
-    timestamp = datetime.utcnow().isoformat() + "Z"
-    test_score = 85.0 if alert_type == "Emergency" else 70.0
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        test_score = 85.0 if alert_type == "Emergency" else 70.0
 
-    alert_doc = {
-        "lake_id": lake_id,
-        "lake_name": lake_name,
-        "type": alert_type,
-        "message": message,
-        "risk_score": test_score,
-        "risk_level": "Critical" if alert_type == "Emergency" else "High",
-        "timestamp": timestamp,
-        "resolved": False,
-        "is_test": True,
-    }
-    _db_alerts.alerts.insert_one({**alert_doc})
-
-    # Broadcast via Redis pub/sub so SSE clients receive it
-    if _redis_client:
-        payload = {
+        alert_doc = {
             "lake_id": lake_id,
             "lake_name": lake_name,
-            "timestamp": timestamp,
-            "temperature": 0,
-            "rainfall": 0,
-            "water_level_rise": 0,
+            "type": alert_type,
+            "message": message,
             "risk_score": test_score,
-            "risk_level": alert_doc["risk_level"],
-            "risk_color": "#991b1b" if alert_type == "Emergency" else "#dc2626",
-            "breakdown": {
-                "temperature_contribution": 0,
-                "rainfall_contribution": 0,
-                "water_level_contribution": 0,
-            },
-            "alert": {
-                "alert": True,
-                "type": alert_type,
-                "message": message,
-                "severity": "critical" if alert_type == "Emergency" else "high",
-                "is_test": True,
-            }
+            "risk_level": "Critical" if alert_type == "Emergency" else "High",
+            "timestamp": timestamp,
+            "resolved": False,
+            "is_test": True,
         }
-        _redis_client.publish("glof_stream", json.dumps(payload))
-        
-    # Trigger test push notifications
-    enqueue_alert_push_notifications({
-        "lake_id": lake_id,
-        "lake_name": lake_name,
-        "risk_level": "Critical" if alert_type == "Emergency" else "High",
-        "risk_score": test_score,
-        "alert_type": alert_type,
-        "alert_message": message,
-        "timestamp": timestamp,
-    })
+        _db_alerts.alerts.insert_one({**alert_doc})
 
-    return jsonify({"message": f"Test {alert_type} alert sent for {lake_name}.", "alert": alert_doc}), 200
+        # Broadcast via Redis pub/sub so SSE clients receive it
+        if _redis_client:
+            payload = {
+                "lake_id": lake_id,
+                "lake_name": lake_name,
+                "timestamp": timestamp,
+                "temperature": 0,
+                "rainfall": 0,
+                "water_level_rise": 0,
+                "risk_score": test_score,
+                "risk_level": alert_doc["risk_level"],
+                "risk_color": "#991b1b" if alert_type == "Emergency" else "#dc2626",
+                "breakdown": {
+                    "temperature_contribution": 0,
+                    "rainfall_contribution": 0,
+                    "water_level_contribution": 0,
+                },
+                "alert": {
+                    "alert": True,
+                    "type": alert_type,
+                    "message": message,
+                    "severity": "critical" if alert_type == "Emergency" else "high",
+                    "is_test": True,
+                }
+            }
+            _redis_client.publish("glof_stream", json.dumps(payload))
+            
+        # Trigger test push notifications
+        enqueue_alert_push_notifications({
+            "lake_id": lake_id,
+            "lake_name": lake_name,
+            "risk_level": "Critical" if alert_type == "Emergency" else "High",
+            "risk_score": test_score,
+            "alert_type": alert_type,
+            "alert_message": message,
+            "timestamp": timestamp,
+        })
+
+        return jsonify({"message": f"Test {alert_type} alert sent for {lake_name}.", "alert": alert_doc}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({"error": f"Internal server error: {str(e)}", "trace": traceback.format_exc()}), 500
 
 
 # ─── User Preferences ──────────────────────────────────
