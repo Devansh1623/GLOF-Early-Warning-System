@@ -29,4 +29,13 @@ def seed_database(db):
         db.lakes.create_index("id", unique=True)
         print("[SEED] Indexes ensured.")
     except Exception as e:
-        print(f"[SEED] Index creation skipped (already exist or conflict).")
+        if "OperationFailure" in str(type(e)):
+            print(f"[SEED] Index conflict detected, dropping 'id_1' and recreating...")
+            try:
+                db.lakes.drop_index("id_1")
+                db.lakes.create_index("id", unique=True)
+                print("[SEED] Indexes recreated successfully.")
+            except Exception as e2:
+                print(f"[SEED] Failed to recreate index: {e2}")
+        else:
+            print(f"[SEED] Index creation skipped: {e}")

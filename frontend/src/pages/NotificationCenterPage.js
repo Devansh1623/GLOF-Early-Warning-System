@@ -55,14 +55,34 @@ export default function NotificationCenterPage() {
             <div className="badge badge-moderate" style={{ fontSize: 12 }}>{t.offlineCache}</div>
           )}
           {isSupported && (
-            <button 
-              className={`btn ${isSubscribed ? 'btn-outline' : 'btn-primary'}`}
-              onClick={isSubscribed ? unsubscribe : subscribe}
-              disabled={loading}
-              style={{ fontSize: '0.8125rem' }}
-            >
-              {loading ? 'Wait...' : isSubscribed ? 'Disable Push Alerts' : 'Enable Push Alerts'}
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {isSubscribed && (
+                <button 
+                  className="btn btn-outline"
+                  onClick={() => {
+                    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                      navigator.serviceWorker.controller.postMessage({
+                        type: 'TEST_NOTIFICATION',
+                        payload: { title: 'Test Alert', body: 'This is a local test of the PWA background notifications.' }
+                      });
+                    } else {
+                      alert('Service worker not ready. Try refreshing.');
+                    }
+                  }}
+                  style={{ fontSize: '0.8125rem' }}
+                >
+                  Test Push
+                </button>
+              )}
+              <button 
+                className={`btn ${isSubscribed ? 'btn-outline' : 'btn-primary'}`}
+                onClick={isSubscribed ? unsubscribe : subscribe}
+                disabled={loading}
+                style={{ fontSize: '0.8125rem' }}
+              >
+                {loading ? 'Wait...' : isSubscribed ? 'Disable Push Alerts' : 'Enable Push Alerts'}
+              </button>
+            </div>
           )}
         </div>
       </div>
