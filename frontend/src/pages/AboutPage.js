@@ -76,6 +76,15 @@ const SLIDES = [
     stat: null,
   },
   {
+    id: 'disasters',
+    tag: 'Real Events · Video Archive',
+    headline: 'Witnessing the scale of GLOF disasters.',
+    sub: 'These are not simulations. South Lhonak (2023), Chamoli (2021), and Kedarnath (2013) are the events GLOFWatch was designed to give communities advance warning about. Watch to understand the scale of what early warning can prevent.',
+    accent: '#ef4444',
+    visual: <VideoVisual />,
+    stat: { value: '5,946+', label: 'Lives lost across these three events alone' },
+  },
+  {
     id: 'cta',
     tag: 'Open Platform',
     headline: 'Built open. Designed for real deployment.',
@@ -591,6 +600,105 @@ function SDGVisual() {
         </div>
       ))}
       <div className="av-sdg-note">Aligned with NDMA's Technology-Led Disaster Risk Reduction mandate</div>
+    </div>
+  );
+}
+
+/* ── GLOF Disaster Video archive slide ──────────────────────────────────── */
+function VideoVisual() {
+  const VIDEOS = [
+    {
+      id:    'south-lhonak',
+      label: 'South Lhonak 2023',
+      sub:   'Sikkim · 42 deaths · ₹8,000 Cr loss',
+      color: '#ef4444',
+      // Teesta-III dam swept away — widely available news footage
+      embedId: 'dWUJlW4b_5k',
+    },
+    {
+      id:    'chamoli',
+      label: 'Chamoli 2021',
+      sub:   'Uttarakhand · 204 deaths',
+      color: '#f97316',
+      embedId: 'yMbcB1ggp_I',
+    },
+    {
+      id:    'kedarnath',
+      label: 'Kedarnath 2013',
+      sub:   'Uttarakhand · 5,700 deaths',
+      color: '#eab308',
+      embedId: 'UJ_g7f8Y1c4',
+    },
+  ];
+
+  const [active, setActive] = useState(0);
+  const vid = VIDEOS[active];
+
+  return (
+    <div className="av-container" style={{ gap: 12, width: '100%' }}>
+      {/* Tab selectors */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {VIDEOS.map((v, i) => (
+          <button
+            key={v.id}
+            onClick={() => setActive(i)}
+            style={{
+              border: `1.5px solid ${i === active ? v.color : 'rgba(255,255,255,0.12)'}`,
+              borderRadius: 8,
+              padding: '5px 12px',
+              background: i === active ? `${v.color}1A` : 'rgba(255,255,255,0.04)',
+              color: i === active ? v.color : 'rgba(255,255,255,0.55)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.65rem',
+              cursor: 'pointer',
+              fontWeight: i === active ? 700 : 400,
+              letterSpacing: '0.04em',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Embedded YouTube video */}
+      <div style={{
+        position: 'relative', width: '100%', paddingTop: '56.25%',
+        borderRadius: 10, overflow: 'hidden',
+        border: `1.5px solid ${vid.color}44`,
+        boxShadow: `0 0 20px ${vid.color}22`,
+      }}>
+        <iframe
+          key={vid.embedId}
+          src={`https://www.youtube.com/embed/${vid.embedId}?rel=0&modestbranding=1`}
+          title={vid.label}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            border: 'none',
+          }}
+        />
+      </div>
+
+      {/* Caption */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{
+          display: 'inline-block', width: 8, height: 8,
+          borderRadius: '50%', background: vid.color,
+          boxShadow: `0 0 6px ${vid.color}`,
+          flexShrink: 0,
+        }} />
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: '0.625rem',
+          color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em',
+        }}>
+          {vid.sub}
+        </span>
+      </div>
     </div>
   );
 }

@@ -13,6 +13,11 @@ export default function NotificationCenterPage() {
   const [alerts, setAlerts] = useState([]);
   const [busyId, setBusyId] = useState('');
 
+  // ── SMS phone number ──
+  const [phone, setPhone]       = useState('');
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneMsg, setPhoneMsg] = useState('');
+
   const loadAlerts = () => {
     authFetch('/api/alerts/?limit=100').then((response) => response.json()).then((data) => {
       if (Array.isArray(data)) setAlerts(data);
@@ -41,6 +46,24 @@ export default function NotificationCenterPage() {
     await authFetch(`/api/alerts/resolve/${alertId}`, { method: 'PATCH' }).catch(() => {});
     setBusyId('');
     loadAlerts();
+  };
+
+  const savePhone = async (e) => {
+    e.preventDefault();
+    setPhoneMsg('');
+    setPhoneSaving(true);
+    try {
+      const res = await authFetch('/api/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ phone: phone.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      setPhoneMsg('✓ Phone number saved. SMS alerts are now enabled.');
+    } catch (err) {
+      setPhoneMsg(`✗ ${err.message}`);
+    }
+    setPhoneSaving(false);
   };
 
   return (
@@ -85,6 +108,53 @@ export default function NotificationCenterPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── SMS phone panel ── */}
+      <div style={{
+        background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)',
+        padding: '18px 22px', marginBottom: 20,
+        display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: 20 }}>📱</span>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', fontWeight: 600,
+            fontSize: '0.9375rem', color: 'var(--on-surface)', marginBottom: 2,
+          }}>SMS Alerts (Critical events)</div>
+          <div style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.75rem',
+            color: 'var(--on-surface-variant)',
+          }}>
+            Receive an SMS when a Critical or Emergency alert fires. Use international format: <code>+919876543210</code>
+          </div>
+        </div>
+        <form onSubmit={savePhone} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            className="input"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder="+91XXXXXXXXXX"
+            style={{ width: 180, fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}
+          />
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={phoneSaving}
+            style={{ whiteSpace: 'nowrap', padding: '10px 18px', fontSize: '0.8125rem' }}
+          >
+            {phoneSaving ? 'Saving…' : 'Save Phone'}
+          </button>
+        </form>
+        {phoneMsg && (
+          <div style={{
+            width: '100%', padding: '7px 12px', borderRadius: 8,
+            fontSize: '0.75rem', fontFamily: 'var(--font-body)',
+            background: phoneMsg.startsWith('✓') ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+            color: phoneMsg.startsWith('✓') ? '#22c55e' : '#ef4444',
+            border: `1px solid ${phoneMsg.startsWith('✓') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+          }}>{phoneMsg}</div>
+        )}
       </div>
 
       <div className="notif-grid">

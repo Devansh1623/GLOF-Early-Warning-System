@@ -26,6 +26,14 @@ class RegisterSchema(Schema):
     role = fields.Str(
         validate=validate.OneOf(["admin", "user"]), load_default="user"
     )
+    # Optional — used for SMS alerts. Must be E.164 e.g. +919876543210
+    phone = fields.Str(
+        load_default="",
+        validate=validate.Regexp(
+            r'^(\+[1-9]\d{6,14})?$',
+            error="Phone must be E.164 format (e.g. +919876543210) or empty"
+        )
+    )
 
 
 class LoginSchema(Schema):
