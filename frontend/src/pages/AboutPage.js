@@ -606,39 +606,54 @@ function SDGVisual() {
 
 /* ── GLOF Disaster Video archive slide ──────────────────────────────────── */
 function VideoVisual() {
-  const VIDEOS = [
+  const EVENTS = [
     {
       id:    'south-lhonak',
-      label: 'South Lhonak 2023',
-      sub:   'Sikkim · 42 deaths · ₹8,000 Cr loss',
+      label: 'South Lhonak Lake',
+      year:  '2023',
+      state: 'Sikkim',
       color: '#ef4444',
-      // Teesta-III dam swept away — widely available news footage
-      embedId: 'dWUJlW4b_5k',
+      deaths: 42,
+      loss:   '₹8,000 Cr',
+      desc:   'Teesta-III dam swept away. Downstream communities had minutes to respond. 4 km of NH-10 destroyed.',
+      // Direct search URL — always resolves to available videos
+      watchUrl: 'https://www.youtube.com/results?search_query=South+Lhonak+GLOF+Sikkim+2023+flood',
+      tags: ['Moraine-dammed', 'Teesta basin', 'NH-10 destroyed'],
     },
     {
       id:    'chamoli',
-      label: 'Chamoli 2021',
-      sub:   'Uttarakhand · 204 deaths',
+      label: 'Chamoli Disaster',
+      year:  '2021',
+      state: 'Uttarakhand',
       color: '#f97316',
-      embedId: 'yMbcB1ggp_I',
+      deaths: 204,
+      loss:   '₹1,500 Cr+',
+      desc:   'Glacier collapse triggered a flash flood in the Rishiganga and Dhauliganga rivers, destroying two hydropower projects.',
+      watchUrl: 'https://www.youtube.com/results?search_query=Chamoli+glacier+flood+2021+Uttarakhand',
+      tags: ['Glacier collapse', 'Rishiganga', 'Hydropower impact'],
     },
     {
       id:    'kedarnath',
-      label: 'Kedarnath 2013',
-      sub:   'Uttarakhand · 5,700 deaths',
+      label: 'Kedarnath Floods',
+      year:  '2013',
+      state: 'Uttarakhand',
       color: '#eab308',
-      embedId: 'UJ_g7f8Y1c4',
+      deaths: 5700,
+      loss:   '₹4,200 Cr',
+      desc:   'Chorabari glacial lake burst after extreme rainfall. Kedarnath town was buried under debris; rescue operations took weeks.',
+      watchUrl: 'https://www.youtube.com/results?search_query=Kedarnath+flood+2013+GLOF+glacier',
+      tags: ['Chorabari lake', 'Mandakini river', 'Largest GLOF on record'],
     },
   ];
 
   const [active, setActive] = useState(0);
-  const vid = VIDEOS[active];
+  const ev = EVENTS[active];
 
   return (
     <div className="av-container" style={{ gap: 12, width: '100%' }}>
       {/* Tab selectors */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {VIDEOS.map((v, i) => (
+        {EVENTS.map((v, i) => (
           <button
             key={v.id}
             onClick={() => setActive(i)}
@@ -656,52 +671,109 @@ function VideoVisual() {
               transition: 'all 0.2s ease',
             }}
           >
-            {v.label}
+            {v.label} '{v.year.slice(2)}
           </button>
         ))}
       </div>
 
-      {/* Embedded YouTube video */}
+      {/* Event detail card */}
       <div style={{
-        position: 'relative', width: '100%', paddingTop: '56.25%',
-        borderRadius: 10, overflow: 'hidden',
-        border: `1.5px solid ${vid.color}44`,
-        boxShadow: `0 0 20px ${vid.color}22`,
+        borderRadius: 12, overflow: 'hidden',
+        border: `1.5px solid ${ev.color}44`,
+        boxShadow: `0 0 20px ${ev.color}18`,
+        background: 'rgba(0,0,0,0.25)',
       }}>
-        <iframe
-          key={vid.embedId}
-          src={`https://www.youtube.com/embed/${vid.embedId}?rel=0&modestbranding=1`}
-          title={vid.label}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          style={{
-            position: 'absolute', inset: 0,
-            width: '100%', height: '100%',
-            border: 'none',
-          }}
-        />
-      </div>
-
-      {/* Caption */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <span style={{
-          display: 'inline-block', width: 8, height: 8,
-          borderRadius: '50%', background: vid.color,
-          boxShadow: `0 0 6px ${vid.color}`,
-          flexShrink: 0,
-        }} />
-        <span style={{
-          fontFamily: 'var(--font-mono)', fontSize: '0.625rem',
-          color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em',
+        {/* Header bar */}
+        <div style={{
+          background: `linear-gradient(135deg, ${ev.color}22, ${ev.color}08)`,
+          borderBottom: `1px solid ${ev.color}33`,
+          padding: '14px 18px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          {vid.sub}
-        </span>
+          <div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontWeight: 700,
+              fontSize: '1rem', color: ev.color,
+            }}>{ev.label} · {ev.year}</div>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
+              color: 'rgba(255,255,255,0.45)', letterSpacing: '0.08em', marginTop: 2,
+            }}>{ev.state.toUpperCase()} · GLACIAL LAKE OUTBURST FLOOD</div>
+          </div>
+          {/* Deaths badge */}
+          <div style={{
+            textAlign: 'right',
+            background: `${ev.color}22`, borderRadius: 8,
+            padding: '6px 12px',
+            border: `1px solid ${ev.color}44`,
+          }}>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontWeight: 800,
+              fontSize: '1.1rem', color: ev.color, lineHeight: 1,
+            }}>{ev.deaths.toLocaleString()}</div>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: '0.5rem',
+              color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em',
+            }}>LIVES LOST</div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '14px 18px' }}>
+          <p style={{
+            fontFamily: 'var(--font-body)', fontSize: '0.8125rem',
+            color: 'rgba(255,255,255,0.7)', lineHeight: 1.65, margin: '0 0 12px',
+          }}>{ev.desc}</p>
+
+          {/* Tags */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+            {ev.tags.map(tag => (
+              <span key={tag} style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.55rem',
+                color: ev.color, background: `${ev.color}18`,
+                borderRadius: 5, padding: '3px 8px',
+                border: `1px solid ${ev.color}33`,
+                letterSpacing: '0.04em',
+              }}>{tag}</span>
+            ))}
+          </div>
+
+          {/* Economic loss + Watch button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.55rem',
+                color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em',
+              }}>ECONOMIC LOSS</div>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontWeight: 700,
+                fontSize: '0.9rem', color: 'rgba(255,255,255,0.75)',
+              }}>{ev.loss}</div>
+            </div>
+            <a
+              href={ev.watchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                background: ev.color, color: '#000',
+                borderRadius: 8, padding: '9px 16px',
+                fontFamily: 'var(--font-mono)', fontWeight: 700,
+                fontSize: '0.7rem', letterSpacing: '0.06em',
+                textDecoration: 'none',
+                boxShadow: `0 4px 14px ${ev.color}55`,
+                transition: 'opacity 0.2s',
+              }}
+            >
+              ▶ Watch on YouTube
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
 
 function CTAVisual() {
   const stack = [
