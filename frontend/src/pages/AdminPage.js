@@ -17,6 +17,9 @@ export default function AdminPage() {
   const consoleESRef = useRef(null);
   const MAX_CONSOLE_LINES = 200;
 
+  // Use a ref so the onerror handler can call startConsole without a circular dep
+  const startConsoleRef = useRef(null);
+
   const startConsole = useCallback(() => {
     if (consoleESRef.current) return;
     // Resolve backend base URL the same way authFetch does
@@ -55,17 +58,21 @@ export default function AdminPage() {
     };
     es.onerror = () => {
       setConsoleActive(false);
-      // Auto-reconnect after 3s
       if (consoleESRef.current) {
         consoleESRef.current.close();
         consoleESRef.current = null;
       }
+      // Auto-reconnect after 3s using ref to avoid circular dependency
       setTimeout(() => {
-        if (consoleESRef.current === null) startConsole();
+        if (consoleESRef.current === null && startConsoleRef.current) {
+          startConsoleRef.current();
+        }
       }, 3000);
     };
-  }, [startConsole]);
+  }, []); // no deps — all state setters are stable, refs are mutable
 
+  // Keep ref in sync with latest startConsole
+  startConsoleRef.current = startConsole;
 
   const stopConsole = useCallback(() => {
     if (consoleESRef.current) {
@@ -74,6 +81,7 @@ export default function AdminPage() {
     }
     setConsoleActive(false);
   }, []);
+
 
   // Auto-scroll console to bottom
   useEffect(() => {
