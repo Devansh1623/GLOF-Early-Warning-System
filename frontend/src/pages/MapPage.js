@@ -1,8 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { Circle, CircleMarker, LayersControl, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import { useSSE } from '../hooks/useSSE';
-import { authFetch, fmt, readFreshCache, riskBadgeClass, riskColor, writeCache } from '../utils/helpers';
+import { authFetch, fmt, readFreshCache, riskBadgeClass, writeCache } from '../utils/helpers';
 import { useI18n } from '../utils/I18nContext';
+
+/**
+ * Vivid, high-contrast colors optimised for map tile visibility.
+ * Deliberately brighter than the UI palette so they pop on both
+ * topographic and satellite basemaps.
+ */
+function mapRiskColor(level) {
+  switch ((level || '').toLowerCase()) {
+    case 'critical': return '#FF2020';   /* bright red          */
+    case 'high':     return '#FF8C00';   /* vivid orange        */
+    case 'moderate': return '#F5D000';   /* strong yellow       */
+    case 'low':      return '#22C55E';   /* clear green         */
+    default:         return '#94A3B8';   /* muted slate         */
+  }
+}
+
+const RISK_LEGEND = [
+  { level: 'Critical', color: '#FF2020' },
+  { level: 'High',     color: '#FF8C00' },
+  { level: 'Moderate', color: '#F5D000' },
+  { level: 'Low',      color: '#22C55E' },
+];
 
 function MapBounds({ lakes }) {
   const map = useMap();
@@ -194,34 +216,71 @@ export default function MapPage() {
           <MapBounds lakes={lakes} />
 
           {lakes.map(lake => {
-            const live   = lakeMap[lake.id];
-            const level  = live?.risk_level || lake.current_risk_level || 'Low';
-            const score  = live?.risk_score ?? lake.current_risk_score ?? 0;
-            const color  = riskColor(level);
-            const radius = level === 'Critical' ? 14 : level === 'High' ? 11 : level === 'Moderate' ? 9 : 7;
-            const diffr  = Math.max(3000, Number(score) * 260);
+            const live      = lakeMap[lake.id];
+            const level     = live?.risk_level || lake.current_risk_level || 'Low';
+            const score     = live?.risk_score ?? lake.current_risk_score ?? 0;
+            const color     = mapRiskColor(level);
+            const isCrit    = level === 'Critical';
+            const isHigh    = level === 'High';
+            const radius    = isCrit ? 16 : isHigh ? 13 : level === 'Moderate' ? 10 : 8;
+            const diffr     = Math.max(3000, Number(score) * 260);
 
             return (
               <React.Fragment key={lake.id}>
+                {/* Diffusion ring — flood exposure radius */}
                 <Circle
                   center={[lake.lat, lake.lon]}
                   radius={diffr}
-                  pathOptions={{ color, opacity: 0.14, fillOpacity: 0.05, weight: 1 }}
+                  pathOptions={{
+                    color,
+                    opacity: isCrit ? 0.35 : 0.18,
+                    fillOpacity: isCrit ? 0.08 : 0.04,
+                    weight: isCrit ? 2 : 1,
+                    dashArray: isCrit ? null : '4 6',
+                  }}
                 />
+
+                {/* Outer glow ring for Critical / High lakes */}
+                {(isCrit || isHigh) && (
+                  <CircleMarker
+                    center={[lake.lat, lake.lon]}
+                    radius={radius + 7}
+                    pathOptions={{
+                      color,
+                      fillColor: color,
+                      fillOpacity: 0.18,
+                      weight: 0,
+                    }}
+                  />
+                )}
+
+                {/* Main marker */}
                 <CircleMarker
                   center={[lake.lat, lake.lon]}
                   radius={radius}
-                  pathOptions={{ color, fillColor: color, fillOpacity: 0.55, weight: 1.5 }}
+                  pathOptions={{
+                    color: '#fff',
+                    fillColor: color,
+                    fillOpacity: 0.92,
+                    weight: isCrit ? 2.5 : 2,
+                  }}
                   eventHandlers={{ click: () => setSelectedLakeId(lake.id) }}
                 >
                   <Popup>
-                    {/* Glassmorphism popup styling is defined in index.css leaflet overrides */}
                     <div style={{ minWidth: 220 }}>
                       <div style={{
-                        fontFamily: 'var(--font-display)', fontWeight: 700,
-                        fontSize: '0.9375rem', marginBottom: 4,
-                        color: 'var(--on-surface)',
-                      }}>{lake.name}</div>
+                        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
+                      }}>
+                        <span style={{
+                          display: 'inline-block', width: 12, height: 12,
+                          borderRadius: '50%', background: color, flexShrink: 0,
+                          boxShadow: `0 0 6px ${color}`,
+                        }} />
+                        <span style={{
+                          fontFamily: 'var(--font-display)', fontWeight: 700,
+                          fontSize: '0.9375rem', color: 'var(--on-surface)',
+                        }}>{lake.name}</span>
+                      </div>
                       <div style={{
                         fontFamily: 'var(--font-body)', fontSize: '0.75rem',
                         color: 'var(--on-surface-variant)', marginBottom: 10,
@@ -243,8 +302,8 @@ export default function MapPage() {
                           color: 'var(--on-surface-variant)', lineHeight: 1.9,
                           letterSpacing: '0.04em',
                         }}>
-                          TEMP · {fmt(live.temperature, '°C')}{'\n'}
-                          RAIN · {fmt(live.rainfall, ' mm')}{'\n'}
+                          TEMP · {fmt(live.temperature, '°C')}{`\n`}
+                          RAIN · {fmt(live.rainfall, ' mm')}{`\n`}
                           RISE · {fmt(live.water_level_rise, ' cm')}
                         </div>
                       )}
@@ -261,6 +320,38 @@ export default function MapPage() {
             );
           })}
         </MapContainer>
+
+        {/* ── Risk colour legend ── */}
+        <div style={{
+          position: 'absolute', bottom: 22, left: 22, zIndex: 1001,
+          background: 'rgba(10,20,30,0.82)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: 10, padding: '10px 14px',
+          display: 'flex', flexDirection: 'column', gap: 5,
+          border: '1px solid rgba(255,255,255,0.08)',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.5rem',
+            color: 'rgba(255,255,255,0.4)', letterSpacing: '0.12em',
+            textTransform: 'uppercase', marginBottom: 2,
+          }}>Risk Level</div>
+          {RISK_LEGEND.map(({ level, color }) => (
+            <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{
+                display: 'inline-block', width: 11, height: 11,
+                borderRadius: '50%', background: color,
+                boxShadow: `0 0 5px ${color}88`,
+                border: '1.5px solid rgba(255,255,255,0.3)',
+                flexShrink: 0,
+              }} />
+              <span style={{
+                fontFamily: 'var(--font-body)', fontSize: '0.6875rem',
+                color: 'rgba(255,255,255,0.75)',
+              }}>{level}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

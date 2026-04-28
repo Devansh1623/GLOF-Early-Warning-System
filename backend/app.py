@@ -393,7 +393,7 @@ def receive_telemetry():
             # Warning alerts   → opted-in users only
             users = list(db.users.find(
                 {"alert_preferences.email_enabled": True, "email": {"$ne": ""}},
-                {"email": 1, "_id": 0},
+                {"email": 1, "phone": 1, "_id": 0},
             ))
 
             if users:

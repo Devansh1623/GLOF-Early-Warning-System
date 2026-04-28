@@ -68,8 +68,14 @@ def register():
         "email": email,
         "name": data["name"] or email.split("@")[0],
         "role": data["role"],
+        "phone": data.get("phone", ""),
         "password": hashed,
         "created_at": datetime.now(tz=timezone.utc),
+        "alert_preferences": {
+            "email_enabled": True,
+            "warnings_enabled": True,
+            "emergencies_enabled": True,
+        },
     })
 
     auth_log.info("User registered", extra={"user": email})
@@ -235,3 +241,55 @@ def me():
         description: Public endpoint check
     """
     return jsonify({"message": "GLOF Auth API v2"}), 200
+
+
+@auth_bp.route("/profile", methods=["PATCH"])
+def update_profile():
+    """
+    Update user profile fields (name, phone).
+    Requires a valid JWT in the Authorization header.
+    ---
+    tags:
+      - Auth
+    parameters:
+      - in: body
+        name: body
+        schema:
+          properties:
+            name:  {type: string}
+            phone: {type: string, example: '+919876543210'}
+    responses:
+      200:
+        description: Profile updated
+      401:
+        description: Missing or invalid token
+    """
+    from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+    import re
+    try:
+        verify_jwt_in_request()
+    except Exception:
+        return jsonify({"error": "Authentication required."}), 401
+
+    identity = get_jwt_identity()
+    raw = request.get_json() or {}
+
+    updates = {}
+    if "name" in raw:
+        name = str(raw["name"]).strip()[:100]
+        if name:
+            updates["name"] = name
+
+    if "phone" in raw:
+        phone = str(raw["phone"]).strip()
+        # Allow empty string (opt out) or valid E.164
+        if phone and not re.match(r'^\+[1-9]\d{6,14}$', phone):
+            return jsonify({"error": "Phone must be E.164 format, e.g. +919876543210"}), 422
+        updates["phone"] = phone
+
+    if not updates:
+        return jsonify({"error": "No updatable fields provided."}), 400
+
+    _db.users.update_one({"email": identity}, {"$set": updates})
+    auth_log.info("Profile updated", extra={"user": identity})
+    return jsonify({"message": "Profile updated successfully.", "updated": list(updates.keys())}), 200
