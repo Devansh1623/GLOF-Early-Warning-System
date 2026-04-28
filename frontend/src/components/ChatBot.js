@@ -1,11 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { authFetch } from '../utils/helpers';
 
 const QUICK_CHIPS = [
   'Which lake has the highest risk?',
   'How many active alerts?',
-  'Is it safe right now?',
+  'Evacuation plan for my location?',
+  'Emergency numbers near me?',
   'What to do in a GLOF emergency?',
+  'Is it safe right now?',
 ];
 
 function parseMarkdownBold(text) {
@@ -19,17 +21,47 @@ function parseMarkdownBold(text) {
 }
 
 export default function ChatBot() {
-  const [open,    setOpen]    = useState(false);
-  const [input,   setInput]   = useState('');
-  const [history, setHistory] = useState([
+  const [open,     setOpen]     = useState(false);
+  const [input,    setInput]    = useState('');
+  const [history,  setHistory]  = useState([
     {
       role: 'model',
-      text: "Hello! I'm **GLOF-Bot** 🏔️ — your AI assistant for the GLOFWatch Early Warning System.\n\nAsk me about lake risk levels, active alerts, or flood preparedness.",
+      text: "Hello! I'm **GLOF-Bot** 🏔️ — your AI assistant for the GLOFWatch Early Warning System.\n\nAsk me about lake risk levels, active alerts, **evacuation plans**, or **emergency numbers** for your location.",
     },
   ]);
-  const [loading, setLoading] = useState(false);
-  const [hasNew,  setHasNew]  = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [hasNew,   setHasNew]   = useState(false);
+  const [userLoc,  setUserLoc]  = useState(null);   // { lat, lon, state, city }
+  const [locLabel, setLocLabel] = useState('');
   const bodyRef = useRef(null);
+
+  // ── Grab user location once on mount ──────────────────────────────────────
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const loc = { lat, lon };
+        // Reverse geocode using Nominatim (free, no key needed)
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const d = await r.json();
+          const addr = d.address || {};
+          loc.state = addr.state || addr.state_district || '';
+          loc.city  = addr.city || addr.town || addr.village || addr.county || '';
+          setLocLabel(loc.city ? `${loc.city}, ${loc.state}` : loc.state);
+        } catch {
+          setLocLabel(`${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`);
+        }
+        setUserLoc(loc);
+      },
+      () => {}, // silently ignore if denied
+      { timeout: 5000 }
+    );
+  }, []);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -43,7 +75,7 @@ export default function ChatBot() {
     if (open) setHasNew(false);
   }, [open]);
 
-  const sendMessage = async (text) => {
+  const sendMessage = useCallback(async (text) => {
     const msg = (text || input).trim();
     if (!msg) return;
     setInput('');
@@ -58,6 +90,7 @@ export default function ChatBot() {
         body: JSON.stringify({
           message: msg,
           history: history.slice(-10).map(h => ({ role: h.role, text: h.text })),
+          user_location: userLoc || undefined,
         }),
       });
       const data = await res.json();
@@ -71,7 +104,7 @@ export default function ChatBot() {
       }]);
     }
     setLoading(false);
-  };
+  }, [input, history, userLoc, open]);
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -79,6 +112,7 @@ export default function ChatBot() {
       sendMessage();
     }
   };
+
 
   return (
     <>
@@ -149,7 +183,7 @@ export default function ChatBot() {
               fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
               color: 'rgba(196,247,249,0.4)', letterSpacing: '0.08em',
             }}>
-              AI · EARLY WARNING ASSISTANT
+              {locLabel ? `📍 ${locLabel}` : 'AI · EARLY WARNING ASSISTANT'}
             </div>
           </div>
           {/* Online indicator */}
@@ -269,6 +303,19 @@ export default function ChatBot() {
               {chip}
             </button>
           ))}
+          {/* Location status pill */}
+          {locLabel && (
+            <span style={{
+              background: 'rgba(34,197,94,0.12)',
+              border: '1px solid rgba(34,197,94,0.25)',
+              borderRadius: 20, padding: '4px 10px',
+              fontFamily: 'var(--font-mono)', fontSize: '0.5625rem',
+              color: 'rgba(34,197,94,0.8)',
+              whiteSpace: 'nowrap',
+            }}>
+              📍 {locLabel}
+            </span>
+          )}
         </div>
 
         {/* Input */}
@@ -280,7 +327,7 @@ export default function ChatBot() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Ask about lake risk levels..."
+            placeholder={locLabel ? `Ask about ${locLabel} evacuation...` : 'Ask about lake risk levels...'}
             disabled={loading}
             style={{
               flex: 1,
@@ -317,7 +364,7 @@ export default function ChatBot() {
           color: 'rgba(196,247,249,0.25)', letterSpacing: '0.05em',
           textAlign: 'center',
         }}>
-          GLOF-Bot · Powered by Gemini AI · Data from live sensors
+          GLOF-Bot · Gemini AI · {locLabel ? `📍 Location detected` : 'Location not shared'}
         </div>
       </div>
 
