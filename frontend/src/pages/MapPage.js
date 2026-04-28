@@ -148,7 +148,7 @@ export default function MapPage() {
                 <div style={{
                   marginTop: 6, fontFamily: 'var(--font-mono)',
                   fontSize: '0.9375rem', fontWeight: 700,
-                  color: riskColor(level), letterSpacing: '-0.02em',
+                  color: mapRiskColor(level), letterSpacing: '-0.02em',
                 }}>
                   {Number(score).toFixed(1)}
                 </div>
