@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Circle, CircleMarker, LayersControl, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import { useSSE } from '../hooks/useSSE';
 import { authFetch, fmt, readFreshCache, riskBadgeClass, writeCache } from '../utils/helpers';
@@ -46,6 +46,47 @@ export default function MapPage() {
   const [lakes, setLakes] = useState(readFreshCache('map_lakes', 30) || []);
   const [selectedLakeId, setSelectedLakeId] = useState('');
 
+  // ── Time-Travel state ─────────────────────────────────────────────────────
+  const [historyMode,  setHistoryMode]  = useState(false);
+  const [hoursAgo,     setHoursAgo]     = useState(0);
+  const [historyData,  setHistoryData]  = useState({});   // { lake_id: snapshot }
+  const [historyLabel, setHistoryLabel] = useState('');
+  const [historyBusy,  setHistoryBusy]  = useState(false);
+  const fetchHistoryTimerRef = useRef(null);
+
+  const fetchHistory = async (h) => {
+    setHistoryBusy(true);
+    try {
+      const res = await authFetch(`/api/telemetry/history-snapshot?hours_ago=${h}`);
+      if (!res.ok) return;
+      const body = await res.json();
+      const map = {};
+      (body.snapshots || []).forEach(s => { map[s.lake_id] = s; });
+      setHistoryData(map);
+      setHistoryLabel(body.target_ts ? new Date(body.target_ts).toLocaleString() : `${h}h ago`);
+    } catch {}
+    setHistoryBusy(false);
+  };
+
+  // Debounced fetch when slider moves
+  useEffect(() => {
+    if (!historyMode) return;
+    clearTimeout(fetchHistoryTimerRef.current);
+    fetchHistoryTimerRef.current = setTimeout(() => fetchHistory(hoursAgo), 350);
+    return () => clearTimeout(fetchHistoryTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoursAgo, historyMode]);
+
+  const enableHistory = () => {
+    setHistoryMode(true);
+    setHoursAgo(6);
+  };
+  const disableHistory = () => {
+    setHistoryMode(false);
+    setHoursAgo(0);
+    setHistoryData({});
+  };
+
   useEffect(() => {
     authFetch('/api/lakes/').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
@@ -69,7 +110,10 @@ export default function MapPage() {
   }, [connected, lakes.length, selectedLakeId]);
 
   const selectedLake = lakes.find(l => l.id === selectedLakeId) || lakes[0];
-  const selectedLive = selectedLake ? lakeMap[selectedLake.id] : null;
+  // In history mode, use historical snapshot data for the selected lake; else live SSE
+  const selectedLive = selectedLake
+    ? (historyMode ? historyData[selectedLake.id] : lakeMap[selectedLake.id])
+    : null;
   const selectedExposure = selectedLake
     ? estimatedExposure(selectedLake, selectedLive?.risk_score || selectedLake.current_risk_score)
     : 0;
@@ -216,9 +260,10 @@ export default function MapPage() {
           <MapBounds lakes={lakes} />
 
           {lakes.map(lake => {
-            const live      = lakeMap[lake.id];
-            const level     = live?.risk_level || lake.current_risk_level || 'Low';
-            const score     = live?.risk_score ?? lake.current_risk_score ?? 0;
+            // In history mode, read from snapshot; otherwise from live SSE
+            const liveOrHist = historyMode ? historyData[lake.id] : lakeMap[lake.id];
+            const level     = liveOrHist?.risk_level || lake.current_risk_level || 'Low';
+            const score     = liveOrHist?.risk_score ?? lake.current_risk_score ?? 0;
             const color     = mapRiskColor(level);
             const isCrit    = level === 'Critical';
             const isHigh    = level === 'High';
@@ -227,7 +272,8 @@ export default function MapPage() {
 
             return (
               <React.Fragment key={lake.id}>
-                {/* Diffusion ring — flood exposure radius */}
+                {/* Diffusion ring — only shown in live mode */}
+                {!historyMode && (
                 <Circle
                   center={[lake.lat, lake.lon]}
                   radius={diffr}
@@ -239,6 +285,7 @@ export default function MapPage() {
                     dashArray: isCrit ? null : '4 6',
                   }}
                 />
+                )}
 
                 {/* Outer glow ring for Critical / High lakes */}
                 {(isCrit || isHigh) && (
@@ -296,15 +343,18 @@ export default function MapPage() {
                           {Number(score).toFixed(1)}
                         </span>
                       </div>
-                      {live && (
+                      {liveOrHist && (
                         <div style={{
                           fontFamily: 'var(--font-mono)', fontSize: '0.625rem',
                           color: 'var(--on-surface-variant)', lineHeight: 1.9,
                           letterSpacing: '0.04em',
                         }}>
-                          TEMP · {fmt(live.temperature, '°C')}{`\n`}
-                          RAIN · {fmt(live.rainfall, ' mm')}{`\n`}
-                          RISE · {fmt(live.water_level_rise, ' cm')}
+                          TEMP · {fmt(liveOrHist.temperature, '°C')}{`\n`}
+                          RAIN · {fmt(liveOrHist.rainfall, ' mm')}{`\n`}
+                          RISE · {fmt(liveOrHist.water_level_rise, ' cm')}
+                          {historyMode && <div style={{ marginTop: 4, color: 'var(--primary)', fontSize: '0.5625rem' }}>
+                            📅 Snapshot: {historyLabel}
+                          </div>}
                         </div>
                       )}
                       <div style={{
@@ -323,13 +373,14 @@ export default function MapPage() {
 
         {/* ── Risk colour legend ── */}
         <div style={{
-          position: 'absolute', bottom: 22, left: 22, zIndex: 1001,
+          position: 'absolute', bottom: historyMode ? 110 : 22, left: 22, zIndex: 1001,
           background: 'rgba(10,20,30,0.82)',
           backdropFilter: 'blur(10px)',
           borderRadius: 10, padding: '10px 14px',
           display: 'flex', flexDirection: 'column', gap: 5,
           border: '1px solid rgba(255,255,255,0.08)',
           pointerEvents: 'none',
+          transition: 'bottom 0.3s ease',
         }}>
           <div style={{
             fontFamily: 'var(--font-mono)', fontSize: '0.5rem',
@@ -352,6 +403,78 @@ export default function MapPage() {
             </div>
           ))}
         </div>
+
+        {/* ── Time-Travel control bar ── */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1002,
+          background: 'rgba(8,16,28,0.92)',
+          backdropFilter: 'blur(14px)',
+          borderTop: '1px solid rgba(196,247,249,0.1)',
+          padding: '12px 20px',
+          display: 'flex', alignItems: 'center', gap: 16,
+          transition: 'transform 0.3s ease',
+          transform: historyMode ? 'translateY(0)' : 'translateY(110%)',
+        }}>
+          {/* Time icon + label */}
+          <span style={{ fontSize: 16, flexShrink: 0 }}>🕐</span>
+          <div style={{ flexShrink: 0, minWidth: 130 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'rgba(196,247,249,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 2 }}>
+              Viewing
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'rgba(196,247,249,0.9)', fontWeight: 600 }}>
+              {hoursAgo === 0 ? 'NOW (Live)' : `${hoursAgo}h ago`}
+            </div>
+            {historyLabel && hoursAgo > 0 && (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'rgba(196,247,249,0.35)', marginTop: 2 }}>
+                {historyLabel}
+              </div>
+            )}
+          </div>
+          {/* Slider */}
+          <input
+            type="range" min={0} max={24} step={0.5}
+            value={hoursAgo}
+            onChange={e => setHoursAgo(Number(e.target.value))}
+            style={{ flex: 1, accentColor: '#9ECFCF', cursor: 'pointer' }}
+          />
+          {/* Tick labels */}
+          <div style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'rgba(196,247,249,0.4)', whiteSpace: 'nowrap' }}>
+            NOW ◀──── 24h ago
+          </div>
+          {/* Busy spinner */}
+          {historyBusy && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--primary)', flexShrink: 0 }}>Loading…</span>
+          )}
+          {/* Count */}
+          {!historyBusy && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'rgba(196,247,249,0.4)', flexShrink: 0 }}>
+              {Object.keys(historyData).length} lakes
+            </span>
+          )}
+        </div>
+
+        {/* ── Live / History toggle button ── */}
+        <button
+          onClick={historyMode ? disableHistory : enableHistory}
+          style={{
+            position: 'absolute', bottom: historyMode ? 120 : 22, right: 22, zIndex: 1003,
+            background: historyMode
+              ? 'rgba(245,208,0,0.18)'
+              : 'rgba(10,20,30,0.82)',
+            backdropFilter: 'blur(10px)',
+            border: historyMode
+              ? '1px solid rgba(245,208,0,0.4)'
+              : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 8,
+            color: historyMode ? '#F5D000' : 'rgba(255,255,255,0.75)',
+            fontFamily: 'var(--font-mono)', fontSize: '0.6875rem',
+            padding: '7px 14px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            transition: 'all 0.3s ease',
+          }}
+        >
+          {historyMode ? '⬅ Back to Live' : '🕐 Time-Travel'}
+        </button>
       </div>
     </div>
   );

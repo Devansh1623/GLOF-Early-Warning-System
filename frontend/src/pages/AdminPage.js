@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { authFetch, riskBadgeClass } from '../utils/helpers';
 import { useAuth } from '../utils/AuthContext';
 
@@ -7,6 +7,72 @@ export default function AdminPage() {
   const [lakes, setLakes]     = useState([]);
   const [events, setEvents]   = useState([]);
   const [tab, setTab]         = useState('alerts');
+
+  // ── Live Console state ────────────────────────────────────────────────────
+  const [consoleLogs, setConsoleLogs] = useState([]);
+  const [consoleActive, setConsoleActive] = useState(false);
+  const consoleRef   = useRef(null);
+  const consoleESRef = useRef(null);
+  const MAX_CONSOLE_LINES = 200;
+
+  const startConsole = useCallback(() => {
+    if (consoleESRef.current) return;
+    const token = localStorage.getItem('access_token') || '';
+    // Use a plain EventSource — stream does NOT need auth token on server
+    const es = new EventSource(
+      `${process.env.REACT_APP_API_BASE || ''}/api/stream`
+    );
+    consoleESRef.current = es;
+    setConsoleActive(true);
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'connected' || data.type === 'ping') return;
+        setConsoleLogs(prev => {
+          const entry = {
+            ts: new Date().toISOString().slice(11, 23),
+            lake_id: data.lake_id || '—',
+            lake_name: data.lake_name || '—',
+            risk_level: data.risk_level || 'Low',
+            risk_score: data.risk_score ?? '—',
+            temp: data.temperature ?? '—',
+            rain: data.rainfall ?? '—',
+            wl: data.water_level_rise ?? '—',
+            raw: JSON.stringify(data, null, 2),
+          };
+          const updated = [...prev, entry];
+          return updated.length > MAX_CONSOLE_LINES ? updated.slice(-MAX_CONSOLE_LINES) : updated;
+        });
+      } catch {}
+    };
+    es.onerror = () => { setConsoleActive(false); };
+  }, []);
+
+  const stopConsole = useCallback(() => {
+    if (consoleESRef.current) {
+      consoleESRef.current.close();
+      consoleESRef.current = null;
+    }
+    setConsoleActive(false);
+  }, []);
+
+  // Auto-scroll console to bottom
+  useEffect(() => {
+    if (tab === 'console' && consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    }
+  }, [consoleLogs, tab]);
+
+  // Start console when tab becomes active, stop when navigating away
+  useEffect(() => {
+    if (tab === 'console') {
+      startConsole();
+    } else {
+      stopConsole();
+    }
+    return () => stopConsole();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // ── Data Export state ─────────────────────────────────────────────────────
   const [exportLake,   setExportLake]   = useState('all');
@@ -218,16 +284,25 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, padding: '6px', background: 'var(--surface-low)', borderRadius: 'var(--radius-xl)', width: 'fit-content' }}>
-        {['alerts', 'lakes', 'events', 'export'].map(tabName => (
+        {['alerts', 'lakes', 'events', 'export', 'console'].map(tabName => (
           <button key={tabName}
             className={`btn ${tab === tabName ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => { setTab(tabName); setMsg(''); setExportMsg(''); }}
             style={{ padding: '8px 18px', fontSize: '0.8125rem' }}
           >
-            {tabName === 'alerts' ? 'Test Alerts'
-              : tabName === 'lakes' ? `Lakes (${lakes.length})`
-              : tabName === 'events' ? `Events (${events.length})`
-              : '📥 Data Export'}
+            {tabName === 'alerts'  ? 'Test Alerts'
+              : tabName === 'lakes'   ? `Lakes (${lakes.length})`
+              : tabName === 'events'  ? `Events (${events.length})`
+              : tabName === 'export'  ? '📥 Data Export'
+              : <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+                    background: consoleActive ? '#22C55E' : '#94A3B8',
+                    boxShadow: consoleActive ? '0 0 6px #22C55E' : 'none',
+                  }} />
+                  Live Console
+                </span>
+            }
           </button>
         ))}
       </div>
@@ -750,6 +825,138 @@ df = pd.read_csv("glof_all_lakes_12h.csv")
 X = df[['temperature','rainfall','water_level_rise','velocity']]
 y = df['risk_level']`}</code>
             </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── Live Console Tab ──────────────────────────────────────────────── */}
+      {tab === 'console' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Controls bar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)',
+            padding: '12px 20px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                background: consoleActive ? '#22C55E' : '#EF4444',
+                boxShadow: consoleActive ? '0 0 8px #22C55E' : 'none',
+                display: 'inline-block',
+              }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--on-surface-variant)' }}>
+                {consoleActive ? `STREAMING — ${consoleLogs.length} events received` : 'DISCONNECTED'}
+              </span>
+            </div>
+            <button className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '5px 14px' }}
+              onClick={() => setConsoleLogs([])}>
+              🗑 Clear
+            </button>
+            {consoleActive
+              ? <button className="btn btn-outline" style={{ fontSize: '0.75rem', padding: '5px 14px' }}
+                  onClick={stopConsole}>⏹ Pause</button>
+              : <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '5px 14px' }}
+                  onClick={startConsole}>▶ Resume</button>
+            }
+          </div>
+
+          {/* Terminal window */}
+          <div
+            ref={consoleRef}
+            style={{
+              background: '#0B1220',
+              borderRadius: 'var(--radius-2xl)',
+              padding: '16px 20px',
+              minHeight: 480,
+              maxHeight: 560,
+              overflowY: 'auto',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.6875rem',
+              lineHeight: 1.8,
+              color: '#9ECFCF',
+              border: '1px solid rgba(196,247,249,0.08)',
+              letterSpacing: '0.03em',
+            }}
+          >
+            {/* Header line */}
+            <div style={{ color: 'rgba(196,247,249,0.35)', marginBottom: 12, borderBottom: '1px solid rgba(196,247,249,0.08)', paddingBottom: 8 }}>
+              {'> GLOFWatch Live Console — Telemetry Stream'}
+            </div>
+
+            {consoleLogs.length === 0 && (
+              <div style={{ color: 'rgba(196,247,249,0.3)', fontStyle: 'italic' }}>
+                Waiting for telemetry data... Make sure the simulator is running.
+              </div>
+            )}
+
+            {consoleLogs.map((log, i) => {
+              const levelColors = {
+                Critical:  '#FF2020',
+                High:      '#FF8C00',
+                Moderate:  '#F5D000',
+                Low:       '#22C55E',
+                Emergency: '#FF2020',
+              };
+              const col = levelColors[log.risk_level] || '#94A3B8';
+              return (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 2 }}>
+                  {/* Timestamp */}
+                  <span style={{ color: 'rgba(196,247,249,0.3)', flexShrink: 0, minWidth: 90 }}>{log.ts}</span>
+                  {/* Lake ID */}
+                  <span style={{ color: '#9ECFCF', flexShrink: 0, minWidth: 56 }}>{log.lake_id}</span>
+                  {/* Risk badge */}
+                  <span style={{
+                    color: col, fontWeight: 700, flexShrink: 0, minWidth: 68,
+                  }}>{'['}{log.risk_level}{']'}</span>
+                  {/* Score */}
+                  <span style={{ color: col, flexShrink: 0, minWidth: 40 }}>score={Number(log.risk_score).toFixed(1)}</span>
+                  {/* Sensors */}
+                  <span style={{ color: 'rgba(196,247,249,0.6)' }}>
+                    T={log.temp}°C rain={log.rain}mm wl={log.wl}cm
+                  </span>
+                  {/* Lake name */}
+                  <span style={{ color: 'rgba(196,247,249,0.35)', fontStyle: 'italic', marginLeft: 'auto' }}>{log.lake_name}</span>
+                </div>
+              );
+            })}
+
+            {/* Blinking cursor */}
+            {consoleActive && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, color: 'rgba(196,247,249,0.4)' }}>
+                <span>{'>'}</span>
+                <span style={{
+                  display: 'inline-block', width: 8, height: 14,
+                  background: 'rgba(196,247,249,0.5)',
+                  animation: 'blink 1.1s step-end infinite',
+                }} />
+              </div>
+            )}
+          </div>
+
+          {/* Legend */}
+          <div style={{
+            display: 'flex', gap: 16, padding: '10px 18px',
+            background: 'var(--surface-default)', borderRadius: 'var(--radius-xl)',
+            width: 'fit-content',
+          }}>
+            {[
+              ['Low', '#22C55E'], ['Moderate', '#F5D000'],
+              ['High', '#FF8C00'], ['Critical', '#FF2020'],
+            ].map(([lvl, col]) => (
+              <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: col, display: 'inline-block',
+                }} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--on-surface-variant)' }}>{lvl}</span>
+              </div>
+            ))}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--outline)', marginLeft: 8 }}>
+              Max {MAX_CONSOLE_LINES} lines stored
+            </span>
           </div>
 
         </div>

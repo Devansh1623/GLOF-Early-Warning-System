@@ -7,6 +7,7 @@ import Sidebar, { MobileBottomNav } from './components/Sidebar';
 import NotificationToast from './components/NotificationToast';
 import ErrorBoundary from './components/ErrorBoundary';
 import LandingPage from './pages/LandingPage';
+import ChatBot from './components/ChatBot';
 import AuthPage from './pages/AuthPage';
 import DashboardHome from './pages/DashboardHome';
 import MapPage from './pages/MapPage';
@@ -36,6 +37,8 @@ function DashboardLayout({ children }) {
       </div>
       {/* Mobile-only: bottom nav bar + top bar */}
       <MobileBottomNav />
+      {/* Global AI assistant — available on every dashboard page */}
+      <ChatBot />
     </SSEProvider>
   );
 }
