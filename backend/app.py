@@ -655,6 +655,186 @@ def export_telemetry(lake_id):
     return jsonify(rows), 200
 
 
+# ─── Bulk Telemetry Export (all lakes, time window) ───────────────────────────
+@app.route("/api/telemetry/export", methods=["GET"])
+@jwt_required()
+def export_bulk_telemetry():
+    """
+    Export last N hours of telemetry for all lakes (or a specific lake) as CSV or XLSX.
+    ---
+    tags:
+      - Telemetry
+    parameters:
+      - name: hours
+        in: query
+        type: number
+        default: 12
+        description: How many hours back to fetch (e.g. 12 = last 12 hours)
+      - name: lake_id
+        in: query
+        type: string
+        default: all
+        description: Specific lake ID or "all" for every lake
+      - name: format
+        in: query
+        type: string
+        enum: [csv, xlsx]
+        default: csv
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Downloadable data file
+      204:
+        description: No data found for the requested window
+    """
+    fmt      = request.args.get("format", "csv").lower()
+    lake_id  = request.args.get("lake_id", "all").strip()
+    try:
+        hours = max(1, min(float(request.args.get("hours", 12)), 720))  # cap at 30 days
+    except (ValueError, TypeError):
+        hours = 12
+
+    since = (datetime.now(tz=timezone.utc) - timedelta(hours=hours)).isoformat()
+
+    query = {"timestamp": {"$gte": since}}
+    if lake_id and lake_id.lower() != "all":
+        query["lake_id"] = lake_id
+
+    FIELDS = ["lake_id", "lake_name", "timestamp", "temperature",
+              "rainfall", "water_level_rise", "velocity",
+              "risk_score", "risk_level", "ml_score"]
+
+    rows = list(
+        db.telemetry.find(query, {"_id": 0})
+        .sort("timestamp", 1)
+        .limit(200_000)   # safety cap — ~200 k rows max
+    )
+
+    if not rows:
+        return Response("No data found for the requested time window.",
+                        mimetype="text/plain"), 204
+
+    # ── Normalise rows — fill missing fields with empty string ────────────────
+    clean_rows = []
+    for r in rows:
+        clean_rows.append({f: r.get(f, "") for f in FIELDS})
+
+    # Filename stem
+    lake_tag  = lake_id if lake_id.lower() != "all" else "all_lakes"
+    ts_tag    = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M")
+    stem      = f"glof_{lake_tag}_{int(hours)}h_{ts_tag}"
+
+    # ── CSV ───────────────────────────────────────────────────────────────────
+    if fmt == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(clean_rows)
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={stem}.csv"},
+        )
+
+    # ── XLSX ──────────────────────────────────────────────────────────────────
+    if fmt == "xlsx":
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            return jsonify({"error": "openpyxl not installed on server"}), 500
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"GLOF Telemetry {int(hours)}h"
+
+        # ── Header row styling ────────────────────────────────────────────────
+        HEADER_FILL  = PatternFill("solid", fgColor="1A3C5E")
+        HEADER_FONT  = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+        CELL_ALIGN   = Alignment(horizontal="center", vertical="center")
+        THIN         = Side(style="thin", color="CBD5E1")
+        BORDER       = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+        # Column display names
+        COL_LABELS = {
+            "lake_id":          "Lake ID",
+            "lake_name":        "Lake Name",
+            "timestamp":        "Timestamp (UTC)",
+            "temperature":      "Temp (°C)",
+            "rainfall":         "Rainfall (mm)",
+            "water_level_rise": "Water Level Rise (cm)",
+            "velocity":         "Velocity (cm/reading)",
+            "risk_score":       "Risk Score",
+            "risk_level":       "Risk Level",
+            "ml_score":         "ML Score",
+        }
+
+        ws.append([COL_LABELS.get(f, f) for f in FIELDS])
+        for col_idx, _ in enumerate(FIELDS, start=1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.fill   = HEADER_FILL
+            cell.font   = HEADER_FONT
+            cell.alignment = CELL_ALIGN
+            cell.border = BORDER
+
+        # Freeze header row
+        ws.freeze_panes = "A2"
+
+        # ── Data rows ─────────────────────────────────────────────────────────
+        RISK_COLORS = {
+            "Low":      "D1FAE5",   # green tint
+            "Moderate": "FEF3C7",   # yellow tint
+            "High":     "FFEDD5",   # orange tint
+            "Critical": "FEE2E2",   # red tint
+            "Emergency":"FCE7F3",   # pink tint
+        }
+
+        for r_idx, row in enumerate(clean_rows, start=2):
+            level = str(row.get("risk_level", ""))
+            row_fill = PatternFill("solid", fgColor=RISK_COLORS.get(level, "FFFFFF")) if level else None
+            for c_idx, field in enumerate(FIELDS, start=1):
+                cell = ws.cell(row=r_idx, column=c_idx, value=row.get(field, ""))
+                cell.border    = BORDER
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                if row_fill:
+                    cell.fill = row_fill
+
+        # ── Auto-fit column widths (heuristic) ────────────────────────────────
+        for col_idx, field in enumerate(FIELDS, start=1):
+            max_len = max(
+                len(COL_LABELS.get(field, field)),
+                max((len(str(r.get(field, ""))) for r in clean_rows[:500]), default=0),
+            )
+            ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 4, 40)
+
+        # ── Summary sheet ─────────────────────────────────────────────────────
+        ws_sum = wb.create_sheet("Summary")
+        ws_sum.append(["Export Info", ""])
+        ws_sum.append(["Generated at (UTC)", datetime.now(tz=timezone.utc).isoformat()])
+        ws_sum.append(["Hours window", hours])
+        ws_sum.append(["Lake filter", lake_id])
+        ws_sum.append(["Total rows", len(clean_rows)])
+        ws_sum.append(["From (approx)", since])
+        ws_sum.append(["Columns", ", ".join(FIELDS)])
+        ws_sum.column_dimensions["A"].width = 24
+        ws_sum.column_dimensions["B"].width = 50
+        for cell in ws_sum["A"]:
+            cell.font = Font(bold=True)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return Response(
+            buf.read(),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={stem}.xlsx"},
+        )
+
+    return jsonify({"error": f"Unsupported format: {fmt}. Use csv or xlsx."}), 400
+
+
 # ─── Alert Acknowledgement ────────────────────────────────────────────────────
 @app.route("/api/alerts/acknowledge/<alert_id>", methods=["PATCH"])
 @jwt_required()

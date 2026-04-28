@@ -8,6 +8,47 @@ export default function AdminPage() {
   const [events, setEvents]   = useState([]);
   const [tab, setTab]         = useState('alerts');
 
+  // ── Data Export state ─────────────────────────────────────────────────────
+  const [exportLake,   setExportLake]   = useState('all');
+  const [exportHours,  setExportHours]  = useState(12);
+  const [exportFmt,    setExportFmt]    = useState('csv');
+  const [exportBusy,   setExportBusy]   = useState(false);
+  const [exportMsg,    setExportMsg]    = useState('');
+
+  const handleExport = async () => {
+    setExportBusy(true);
+    setExportMsg('');
+    try {
+      const params = new URLSearchParams({
+        hours:   exportHours,
+        lake_id: exportLake,
+        format:  exportFmt,
+      });
+      const res = await authFetch(`/api/telemetry/export?${params}`);
+      if (res.status === 204) {
+        setExportMsg('⚠ No data found for the selected window. Run the simulator first.');
+        setExportBusy(false);
+        return;
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const ext  = exportFmt === 'xlsx' ? 'xlsx' : 'csv';
+      const lake = exportLake === 'all' ? 'all_lakes' : exportLake;
+      const name = `glof_${lake}_${exportHours}h.${ext}`;
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+      setExportMsg(`✓ Downloaded: ${name}`);
+    } catch (err) {
+      setExportMsg(`✗ ${err.message}`);
+    }
+    setExportBusy(false);
+  };
+
   // New lake form
   const [newLake, setNewLake] = useState({ id: '', name: '', state: '', lat: '', lon: '', elevation_m: '', area_ha: '', dam_type: '', river_basin: '', notes: '' });
 
@@ -177,13 +218,16 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, padding: '6px', background: 'var(--surface-low)', borderRadius: 'var(--radius-xl)', width: 'fit-content' }}>
-        {['alerts', 'lakes', 'events'].map(tabName => (
+        {['alerts', 'lakes', 'events', 'export'].map(tabName => (
           <button key={tabName}
             className={`btn ${tab === tabName ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => { setTab(tabName); setMsg(''); }}
+            onClick={() => { setTab(tabName); setMsg(''); setExportMsg(''); }}
             style={{ padding: '8px 18px', fontSize: '0.8125rem' }}
           >
-            {tabName === 'alerts' ? 'Test Alerts' : tabName === 'lakes' ? `Lakes (${lakes.length})` : `Events (${events.length})`}
+            {tabName === 'alerts' ? 'Test Alerts'
+              : tabName === 'lakes' ? `Lakes (${lakes.length})`
+              : tabName === 'events' ? `Events (${events.length})`
+              : '📥 Data Export'}
           </button>
         ))}
       </div>
@@ -480,6 +524,234 @@ export default function AdminPage() {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Data Export Tab ────────────────────────────────────────────── */}
+      {tab === 'export' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Hero info card */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(26,60,94,0.35) 0%, rgba(196,247,249,0.06) 100%)',
+            border: '1px solid rgba(196,247,249,0.15)',
+            borderRadius: 'var(--radius-2xl)', padding: '20px 24px',
+            display: 'flex', gap: 16, alignItems: 'flex-start',
+          }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 'var(--radius-xl)',
+              background: 'rgba(196,247,249,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22,
+            }}>📊</div>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.9375rem', color: 'var(--on-surface)', marginBottom: 6 }}>
+                Telemetry Data Export
+              </div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', lineHeight: 1.7 }}>
+                Download the last <strong>1 – 720 hours</strong> of live sensor readings for any lake (or all lakes at once).
+                Each row contains timestamp, temperature, rainfall, water level rise, velocity, and computed risk scores.
+                Use <strong>CSV</strong> for Excel / Google Sheets, or <strong>XLSX</strong> for a pre-formatted Excel workbook
+                with colour-coded risk levels and an auto-generated summary sheet.
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  ['⏱ Every 5 sec / lake', 'var(--primary)'],
+                  ['🔢 10 columns', 'var(--secondary)'],
+                  ['📦 Up to 200 k rows', 'var(--on-surface-variant)'],
+                ].map(([label, color]) => (
+                  <span key={label} style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '0.625rem', fontWeight: 600,
+                    color, border: `1px solid ${color}44`,
+                    borderRadius: 'var(--radius-md)', padding: '3px 10px',
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}>{label}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Main controls card */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+            {/* Left: filters */}
+            <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 24 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', marginBottom: 18, color: 'var(--on-surface)' }}>
+                Export Settings
+              </div>
+
+              {/* Lake selector */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Lake</label>
+                <select className="input" value={exportLake} onChange={e => setExportLake(e.target.value)}>
+                  <option value="all">🌐 All Lakes</option>
+                  {lakes.map(l => <option key={l.id} value={l.id}>{l.name} ({l.id})</option>)}
+                </select>
+              </div>
+
+              {/* Time window */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Time Window</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+                  {[1, 6, 12, 24, 48].map(h => (
+                    <button key={h} type="button"
+                      className={`btn ${exportHours === h ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ padding: '8px 4px', fontSize: '0.75rem' }}
+                      onClick={() => setExportHours(h)}
+                    >{h}h</button>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <label style={{ ...labelStyle, marginBottom: 4 }}>Custom (hours)</label>
+                  <input
+                    className="input" type="number" min={1} max={720} step={1}
+                    value={exportHours}
+                    onChange={e => setExportHours(Math.max(1, Math.min(720, Number(e.target.value) || 12)))}
+                    style={{ fontSize: '0.875rem' }}
+                  />
+                </div>
+              </div>
+
+              {/* Format */}
+              <div style={{ marginBottom: 24 }}>
+                <label style={labelStyle}>File Format</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['csv', 'xlsx'].map(f => (
+                    <button key={f} type="button"
+                      className={`btn ${exportFmt === f ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ flex: 1, fontSize: '0.8125rem', padding: '10px' }}
+                      onClick={() => setExportFmt(f)}
+                    >
+                      {f === 'csv' ? '📄 CSV' : '📊 Excel (XLSX)'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--outline)', lineHeight: 1.6 }}>
+                  {exportFmt === 'csv'
+                    ? 'Plain CSV — opens in Excel, Google Sheets, or any data tool.'
+                    : 'Formatted workbook with colour-coded risk rows and a Summary sheet.'}
+                </div>
+              </div>
+
+              <button
+                id="export-download-btn"
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '13px', fontSize: '0.9rem', fontWeight: 700 }}
+                disabled={exportBusy}
+                onClick={handleExport}
+              >
+                {exportBusy ? '⏳ Preparing file…' : `⬇ Download ${exportFmt.toUpperCase()}`}
+              </button>
+
+              {exportMsg && (
+                <div style={{
+                  marginTop: 12, padding: '9px 14px', borderRadius: 'var(--radius-xl)',
+                  fontFamily: 'var(--font-body)', fontSize: '0.8125rem',
+                  background: exportMsg.startsWith('✓') ? 'rgba(158,207,209,0.08)' : 'rgba(255,180,171,0.08)',
+                  color: exportMsg.startsWith('✓') ? 'var(--risk-low)' : exportMsg.startsWith('⚠') ? 'var(--secondary)' : 'var(--error)',
+                  border: `1px solid ${
+                    exportMsg.startsWith('✓') ? 'rgba(158,207,209,0.2)'
+                    : exportMsg.startsWith('⚠') ? 'rgba(244,182,106,0.2)'
+                    : 'rgba(255,180,171,0.2)'
+                  }`,
+                }}>{exportMsg}</div>
+              )}
+            </div>
+
+            {/* Right: reference info */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              {/* Row estimate card */}
+              <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 20 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.875rem', color: 'var(--on-surface)', marginBottom: 14 }}>
+                  Estimated Row Count
+                </div>
+                {(() => {
+                  const lakeCount = exportLake === 'all' ? lakes.length || 12 : 1;
+                  // simulator posts 3 lakes per tick every 5 sec → effective per-lake rate ~ every 20 sec
+                  const perLakePerHour = Math.round(3600 / 20);
+                  const estimate = lakeCount * exportHours * perLakePerHour;
+                  const low  = Math.round(estimate * 0.6);
+                  const high = Math.round(estimate * 1.1);
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, textAlign: 'center' }}>
+                      {[
+                        ['Lakes', lakeCount, 'var(--primary)'],
+                        ['Hours', exportHours, 'var(--secondary)'],
+                        ['~Rows', `${(low/1000).toFixed(1)}k – ${(high/1000).toFixed(1)}k`, 'var(--risk-high)'],
+                      ].map(([label, val, color]) => (
+                        <div key={label} style={{
+                          background: 'var(--surface-low)', borderRadius: 'var(--radius-xl)', padding: '12px 8px',
+                        }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.125rem', fontWeight: 700, color }}>{val}</div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--outline)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4 }}>{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+                <div style={{ marginTop: 12, fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--outline)', lineHeight: 1.6 }}>
+                  Estimate based on simulator posting ≈1 reading per lake every 20 sec.
+                  Actual count depends on uptime and simulator speed.
+                </div>
+              </div>
+
+              {/* Column schema */}
+              <div style={{ background: 'var(--surface-default)', borderRadius: 'var(--radius-2xl)', padding: 20, flex: 1 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.875rem', color: 'var(--on-surface)', marginBottom: 14 }}>
+                  Exported Columns
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[
+                    ['lake_id',          'GL001',              'Lake identifier'],
+                    ['lake_name',        'South Lhonak Lake',  'Human-readable name'],
+                    ['timestamp',        '2026-04-28T17:00Z',  'UTC ISO-8601'],
+                    ['temperature',      '12.5',               '°C'],
+                    ['rainfall',         '45.2',               'mm'],
+                    ['water_level_rise', '120.0',              'cm'],
+                    ['velocity',         '1.234',              'cm per reading'],
+                    ['risk_score',       '62',                 '0–100 composite'],
+                    ['risk_level',       'High',               'Low / Moderate / High / Critical'],
+                    ['ml_score',         '58.7',               'XGBoost prediction'],
+                  ].map(([col, example, desc]) => (
+                    <div key={col} style={{
+                      display: 'grid', gridTemplateColumns: '110px 90px 1fr',
+                      gap: 8, alignItems: 'center',
+                      padding: '5px 8px', borderRadius: 'var(--radius-md)',
+                      background: 'var(--surface-low)',
+                    }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--primary)', fontWeight: 600 }}>{col}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--on-surface-variant)' }}>{example}</span>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.6875rem', color: 'var(--outline)' }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* ML Training note */}
+          <div style={{
+            background: 'rgba(196,247,249,0.04)', border: '1px solid rgba(196,247,249,0.12)',
+            borderRadius: 'var(--radius-2xl)', padding: '16px 20px',
+            display: 'flex', gap: 12, alignItems: 'flex-start',
+          }}>
+            <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>🤖</span>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', lineHeight: 1.7 }}>
+              <strong style={{ color: 'var(--on-surface)' }}>ML Training Tip: </strong>
+              Export at least 24–48 h of data to get a meaningful dataset. Load the CSV directly into Python:
+              <code style={{
+                display: 'block', marginTop: 8, padding: '8px 12px',
+                background: 'var(--surface-low)', borderRadius: 'var(--radius-md)',
+                fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--primary)',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              }}>{`import pandas as pd
+df = pd.read_csv("glof_all_lakes_12h.csv")
+X = df[['temperature','rainfall','water_level_rise','velocity']]
+y = df['risk_level']`}</code>
+            </div>
+          </div>
+
         </div>
       )}
     </div>
