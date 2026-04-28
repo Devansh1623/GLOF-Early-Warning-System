@@ -1220,6 +1220,11 @@ tr:hover td { background: rgba(196, 247, 249, 0.04); }
   }
 }
 
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 .animate-fade   { animation: fadeRise 0.45s ease-out; }
 .animate-slide  { animation: slideInLeft 0.3s ease-out; }
 

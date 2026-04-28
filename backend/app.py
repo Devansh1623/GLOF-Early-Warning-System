@@ -1028,5 +1028,216 @@ def health_detail():
     }), 200
 
 
+# ─── Time-Travel Snapshot (per-lake state N hours ago) ───────────────────────
+@app.route("/api/telemetry/history-snapshot", methods=["GET"])
+@jwt_required()
+def telemetry_history_snapshot():
+    """
+    Return the most recent telemetry reading per lake from a point in the past.
+    Used by the Time-Travel map slider on the frontend.
+    ---
+    tags:
+      - Telemetry
+    parameters:
+      - name: hours_ago
+        in: query
+        type: number
+        default: 0
+        description: How many hours in the past (0 = now, 24 = 24h ago)
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: List of per-lake snapshots
+    """
+    try:
+        hours_ago = max(0.0, min(float(request.args.get("hours_ago", 0)), 72))
+    except (ValueError, TypeError):
+        hours_ago = 0.0
+
+    now = datetime.now(tz=timezone.utc)
+    # Target timestamp = now - hours_ago
+    target_ts = now - timedelta(hours=hours_ago)
+    # Look in a ±window around the target to find readings
+    # Use a 30-min window; widen to 2h for older targets
+    window_minutes = 30 if hours_ago < 6 else 120
+    window_start = (target_ts - timedelta(minutes=window_minutes)).isoformat()
+    window_end   = target_ts.isoformat()
+
+    # For hours_ago=0 we just want the absolute latest per lake
+    if hours_ago < 0.01:
+        window_end = now.isoformat()
+        window_start = (now - timedelta(minutes=30)).isoformat()
+
+    pipeline = [
+        {"$match": {"timestamp": {"$gte": window_start, "$lte": window_end}}},
+        {"$sort": {"timestamp": -1}},
+        {"$group": {
+            "_id": "$lake_id",
+            "lake_id":          {"$first": "$lake_id"},
+            "lake_name":        {"$first": "$lake_name"},
+            "timestamp":        {"$first": "$timestamp"},
+            "risk_score":       {"$first": "$risk_score"},
+            "risk_level":       {"$first": "$risk_level"},
+            "water_level_rise": {"$first": "$water_level_rise"},
+            "temperature":      {"$first": "$temperature"},
+            "rainfall":         {"$first": "$rainfall"},
+        }},
+        {"$project": {"_id": 0}},
+    ]
+
+    results = list(db.telemetry.aggregate(pipeline))
+    return jsonify({
+        "hours_ago":  hours_ago,
+        "target_ts":  target_ts.isoformat(),
+        "window_min": window_start,
+        "window_max": window_end,
+        "snapshots":  results,
+        "count":      len(results),
+    }), 200
+
+
+# ─── GLOF-Bot AI Chat ─────────────────────────────────────────────────────────
+@app.route("/api/chat", methods=["POST"])
+@jwt_required()
+@limiter.limit("30 per minute")
+def glof_chat():
+    """
+    GLOF-Bot: Gemini-powered AI assistant with live lake context.
+    ---
+    tags:
+      - AI
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            message: {type: string}
+            history:
+              type: array
+              items:
+                properties:
+                  role: {type: string, enum: [user, model]}
+                  text: {type: string}
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: AI reply
+      503:
+        description: Gemini API not configured
+    """
+    body = request.get_json(silent=True) or {}
+    user_message = (body.get("message") or "").strip()
+    history      = body.get("history", []) or []
+
+    if not user_message:
+        return jsonify({"error": "message is required"}), 400
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+
+    # ── Build lake context (top 12 lakes by risk score) ───────────────────────
+    lakes_ctx = list(
+        db.lakes.find({}, {"_id": 0, "id": 1, "name": 1, "state": 1,
+                           "current_risk_level": 1, "current_risk_score": 1,
+                           "elevation_m": 1, "area_ha": 1, "river_basin": 1})
+        .sort("current_risk_score", DESCENDING)
+        .limit(12)
+    )
+    lake_lines = []
+    for l in lakes_ctx:
+        lake_lines.append(
+            f"  • {l.get('name','?')} ({l.get('id','?')}) — {l.get('state','?')}, "
+            f"Risk: {l.get('current_risk_level','?')} ({l.get('current_risk_score',0):.1f}), "
+            f"Basin: {l.get('river_basin','?')}, Elev: {l.get('elevation_m','?')}m"
+        )
+    lake_context = "\n".join(lake_lines) if lake_lines else "No lake data available."
+
+    active_alerts = db.alerts.count_documents({"resolved": False})
+    critical_count = db.lakes.count_documents({"current_risk_level": "Critical"})
+
+    system_prompt = f"""You are GLOF-Bot, the AI assistant for GLOFWatch — an Early Warning System for 
+Glacial Lake Outburst Floods (GLOFs) in the Himalayas (India). You help emergency responders, 
+researchers, and local officials understand lake risk levels and take action.
+
+CURRENT SYSTEM STATUS (live data):
+- Total active alerts: {active_alerts}
+- Lakes at Critical risk: {critical_count}
+
+MONITORED LAKES (sorted by risk, highest first):
+{lake_context}
+
+INSTRUCTIONS:
+- Answer questions about specific lakes, risk levels, and flood preparedness.
+- If a lake is at Critical risk, always emphasize urgency and evacuation protocols.
+- If asked about evacuation routes, recommend moving to higher ground and contacting NDMA/SDMA.
+- Keep responses concise (2-4 sentences max) and actionable.
+- Use simple language — some users may be in the field.
+- You CANNOT send alerts or perform actions — direct users to the Admin panel for that.
+- If a question is unrelated to GLOF/floods/disasters, politely redirect.
+- Risk levels in order: Low → Moderate → High → Critical → Emergency.
+"""
+
+    # ── Rule-based fallback (no API key) ────────────────────────────────────
+    if not gemini_key:
+        # Simple rule engine as fallback
+        msg_lower = user_message.lower()
+        highest = lakes_ctx[0] if lakes_ctx else None
+        if any(w in msg_lower for w in ["highest", "worst", "critical", "most dangerous"]):
+            if highest:
+                reply = (f"The highest-risk lake right now is **{highest['name']}** "
+                         f"({highest['id']}) in {highest['state']} with risk level "
+                         f"**{highest['current_risk_level']}** (score: {highest['current_risk_score']:.1f}). "
+                         f"It is in the {highest['river_basin']} river basin.")
+            else:
+                reply = "No lake data is available at the moment."
+        elif any(w in msg_lower for w in ["alert", "alerts", "active"]):
+            reply = f"There are currently **{active_alerts} active unresolved alert(s)** in the system. You can view and acknowledge them in the Alerts panel."
+        elif any(w in msg_lower for w in ["safe", "all safe", "ok"]):
+            if critical_count == 0:
+                reply = "✅ All monitored lakes are currently below Critical risk. Continue monitoring."
+            else:
+                reply = f"⚠️ **{critical_count} lake(s) are at Critical risk** right now. Immediate monitoring is advised."
+        elif any(w in msg_lower for w in ["evacuate", "evacuation", "escape", "run"]):
+            reply = ("In case of a GLOF emergency: **move to higher ground immediately**, avoid river banks and valleys. "
+                     "Contact NDMA (011-26701700) or SDMA for your state. Do not wait for official confirmation if water levels are rising fast.")
+        elif any(w in msg_lower for w in ["hello", "hi", "hey", "help"]):
+            reply = ("Hello! I'm GLOF-Bot 🏔️. I can help you check lake risk levels, understand alerts, "
+                     "and advise on flood preparedness. Try asking: *'Which lake has the highest risk?'*")
+        elif any(w in msg_lower for w in ["how many lakes", "total lakes", "count"]):
+            reply = f"GLOFWatch is currently monitoring **{len(lakes_ctx)}+ glacial lakes** across the Himalayan region."
+        else:
+            reply = ("I'm GLOF-Bot. I can answer questions about lake risk levels, active alerts, and flood preparedness. "
+                     "Try: *'What is the current risk for GL001?'* or *'Which lake is most dangerous?'*")
+        return jsonify({"reply": reply, "mode": "rule-based"}), 200
+
+    # ── Gemini API call ───────────────────────────────────────────────────────
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_prompt,
+        )
+
+        # Build chat history for Gemini
+        gemini_history = []
+        for h in history[-10:]:  # last 10 turns max
+            role = "user" if h.get("role") == "user" else "model"
+            gemini_history.append({"role": role, "parts": [h.get("text", "")]})
+
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(user_message)
+        reply = response.text
+
+        return jsonify({"reply": reply, "mode": "gemini"}), 200
+
+    except Exception as e:
+        app_log.warning(f"Gemini API error: {e}")
+        return jsonify({"error": f"AI service error: {str(e)}", "reply": "I'm having trouble connecting to the AI service right now. Please try again in a moment."}), 503
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+
