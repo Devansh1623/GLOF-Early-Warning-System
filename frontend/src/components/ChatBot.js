@@ -67,7 +67,7 @@ export default function ChatBot() {
     } catch {
       setHistory(prev => [...prev, {
         role: 'model',
-        text: 'I'm having trouble connecting to the server. Please check your connection.',
+        text: "I'm having trouble connecting to the server. Please check your connection.",
       }]);
     }
     setLoading(false);
