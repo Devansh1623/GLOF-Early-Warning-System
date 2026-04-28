@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { authFetch, riskBadgeClass } from '../utils/helpers';
+import { getApiCandidates } from '../utils/api';
 import { useAuth } from '../utils/AuthContext';
+
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -17,17 +19,23 @@ export default function AdminPage() {
 
   const startConsole = useCallback(() => {
     if (consoleESRef.current) return;
-    const token = localStorage.getItem('access_token') || '';
-    // Use a plain EventSource — stream does NOT need auth token on server
-    const es = new EventSource(
-      `${process.env.REACT_APP_API_BASE || ''}/api/stream`
-    );
+    // Resolve backend base URL the same way authFetch does
+    const baseUrl = getApiCandidates()[0] || '';
+    const es = new EventSource(`${baseUrl}/api/stream`);
     consoleESRef.current = es;
     setConsoleActive(true);
+    es.onopen = () => setConsoleActive(true);
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.type === 'connected' || data.type === 'ping') return;
+        if (data.type === 'connected') {
+          setConsoleLogs(prev => [
+            ...prev,
+            { ts: new Date().toISOString().slice(11,23), lake_id: 'SYSTEM', lake_name: 'GLOFWatch', risk_level: 'Low', risk_score: '—', temp: '—', rain: '—', wl: '—', system: true },
+          ]);
+          return;
+        }
+        if (data.type === 'ping') return;
         setConsoleLogs(prev => {
           const entry = {
             ts: new Date().toISOString().slice(11, 23),
@@ -45,8 +53,19 @@ export default function AdminPage() {
         });
       } catch {}
     };
-    es.onerror = () => { setConsoleActive(false); };
-  }, []);
+    es.onerror = () => {
+      setConsoleActive(false);
+      // Auto-reconnect after 3s
+      if (consoleESRef.current) {
+        consoleESRef.current.close();
+        consoleESRef.current = null;
+      }
+      setTimeout(() => {
+        if (consoleESRef.current === null) startConsole();
+      }, 3000);
+    };
+  }, [startConsole]);
+
 
   const stopConsole = useCallback(() => {
     if (consoleESRef.current) {
