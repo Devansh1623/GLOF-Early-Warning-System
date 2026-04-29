@@ -209,7 +209,7 @@ def create_demo_users(database):
                     "email_enabled": True,
                 },
             })
-            app_log.info(f"Created demo user: {u['email']}")
+            app_log.info(f"Created demo user with role: {u['role']}")
 
 
 # ─── Startup (non-blocking) ──────────────────────────────────────────────────
@@ -1297,7 +1297,7 @@ INSTRUCTIONS:
 
     except Exception as e:
         app_log.warning(f"Gemini API error: {e}")
-        return jsonify({"error": f"AI service error: {str(e)}", "reply": "I'm having trouble connecting to the AI service right now. Please try again in a moment."}), 503
+        return jsonify({"error": "AI service error occurred", "reply": "I'm having trouble connecting to the AI service right now. Please try again in a moment."}), 503
 
 
 if __name__ == "__main__":
