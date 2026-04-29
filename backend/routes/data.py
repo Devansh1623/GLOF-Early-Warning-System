@@ -280,7 +280,8 @@ def send_test_alert():
         return jsonify({"message": f"Test {alert_type} alert sent for {lake_name}.", "alert": alert_doc}), 200
     except Exception as e:
         import traceback
-        return jsonify({"error": f"Internal server error: {str(e)}", "trace": traceback.format_exc()}), 500
+        alert_log.error(f"Internal server error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ─── User Preferences ──────────────────────────────────
@@ -453,5 +454,6 @@ def push_broadcast():
 
     except Exception as e:
         import traceback
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+        alert_log.error(f"Internal server error: {e}\n{traceback.format_exc()}")
+        return jsonify({"error": "Internal server error"}), 500
 
