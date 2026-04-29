@@ -4,6 +4,8 @@
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
   <img src="https://img.shields.io/badge/flask-3.1-000000?style=flat-square&logo=flask" alt="Flask">
   <img src="https://img.shields.io/badge/mongodb-7-47A248?style=flat-square&logo=mongodb" alt="MongoDB">
+  <img src="https://img.shields.io/badge/gemini-AI-4285F4?style=flat-square&logo=google" alt="Gemini AI">
+  <img src="https://img.shields.io/badge/PWA-push%20notifications-5A0FC8?style=flat-square&logo=googlechrome" alt="PWA">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="License">
 </p>
@@ -138,6 +140,9 @@ GLOFWatch aims to bridge these gaps with an integrated, automated, always-on mon
 | 8 | Enable data export (CSV/JSON) for downstream analysis | ✅ |
 | 9 | Provide anomaly detection for sensor health monitoring | ✅ |
 | 10 | Support multi-language UI (English, Hindi, Nepali) | ✅ |
+| 11 | AI-powered location-aware chatbot with emergency evacuation guidance | ✅ |
+| 12 | Admin real-time telemetry Live Console (hacker-terminal view) | ✅ |
+| 13 | PWA Web Push Notifications for background mobile alerting | ✅ |
 
 ---
 
@@ -322,6 +327,19 @@ The system covers the end-to-end pipeline from data ingestion → risk scoring �
 | Maps | React-Leaflet + Leaflet | 4.2.1 / 1.9.4 | Interactive geospatial maps |
 | Charts | Recharts | 2.15.0 | Telemetry data visualization |
 | Build Tool | Create React App | 5.0.1 | Webpack bundling |
+| AI Chatbot | Google Gemini API (via backend) | gemini-2.0-flash | Location-aware GLOF emergency assistant |
+| Geolocation | Browser Geolocation API + Nominatim | native / free | Reverse geocoding (city/state, zero cost) |
+| Push Notifications | Web Push API + Service Worker | native | PWA background mobile alerts |
+| SSE Console | EventSource API | native | Admin live telemetry terminal stream |
+
+### AI & Generative Layer
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| LLM | Google Gemini 2.0 Flash | Natural language GLOF risk Q&A |
+| System Prompt | Custom (1,200+ tokens) | State-wise emergency numbers, NDRF battalion contacts, evacuation protocols |
+| Location Context | Nominatim (OpenStreetMap) | Free reverse geocoding — no API key needed |
+| VAPID Push | `pywebpush` + Web Push API | Signed push messages to subscribed PWA users |
 
 ### Infrastructure
 
@@ -633,9 +651,35 @@ python train_model.py
 - **Admin resolve/acknowledge** workflow
 - **Test alert** capability for admins
 
+### 🤖 GLOF-Bot — AI Emergency Assistant *(New)*
+- **Powered by Google Gemini 2.0 Flash** — real generative AI, not rule-based responses
+- **Location-aware** — detects user's city/state via browser Geolocation + Nominatim reverse geocoding
+- **Tailored evacuation guidance** — provides region-specific evacuation routes and safe zones
+- **State-wise emergency numbers** — SDMA/SEOC/DM contacts for Uttarakhand, HP, J&K, Ladakh, Sikkim, Arunachal, Assam, and more
+- **National contacts** — NDMA (1078), NDRF, 112, 108, 100, 101
+- **Quick-chips** — one-tap prompts: *"Evacuation plan for my location?"*, *"Emergency numbers near me?"*, *"Which lake has highest risk?"*
+- **Location pill** — green badge in chat UI showing `📍 City, State` when location is detected
+- **Context-aware input placeholder** — updates to `Ask about <your city> evacuation...`
+
+### 🖥️ Admin Live Console *(New)*
+- **Real-time telemetry terminal** in the Admin Panel — scrolling hacker-style stream of raw JSON
+- **Structured table rows** — `[HH:MM:SS.mmm] | LAKE_ID | Risk | Score | Temp | Rain | Water Level`
+- **Auto-scroll** to latest entry, with manual scroll-lock override
+- **Auto-reconnect** — drops and reconnects automatically with 3-second backoff if the SSE stream fails
+- **Correct backend URL** — uses `getApiCandidates()` to always resolve the real backend, not the frontend host
+- **Start / Stop** controls with green/red status badge
+- **JSON raw-data expandable** per row for deep inspection during demos
+
+### 📱 PWA Web Push Notifications *(New)*
+- **Background alerts** — users receive critical GLOF alerts even when the browser tab is closed
+- **Service Worker** handles `push` events and displays OS-native notifications
+- **VAPID-signed** payloads via `pywebpush` on the backend for security
+- **Admin broadcast** — single button in Admin Panel to push to all subscribed users
+- **Subscription management** — stored in MongoDB; users can opt in/out from Notification Center
+
 ### Notification Center
 - **Centralized notification history**
-- **User-configurable preferences** (enable/disable warnings, emergencies, email)
+- **User-configurable preferences** (enable/disable warnings, emergencies, email, push)
 - **Email delivery tracking** (admin view of job status)
 
 ### Historical Events Timeline
@@ -645,6 +689,8 @@ python train_model.py
 ### Admin Panel
 - **CRUD operations** on lakes, events, and alerts
 - **Email broadcast** to all opted-in users
+- **Push notification broadcast** *(New)*
+- **Live Console** telemetry terminal *(New)*
 - **Audit log viewer** (last 500 entries)
 - **ML model status** inspector
 - **Test alert sender**
@@ -978,6 +1024,10 @@ The project includes a `render.yaml` blueprint for one-click deployment:
 | `RESEND_API_KEY` | — | (empty) | Resend email API key |
 | `RESEND_FROM_EMAIL` | — | `GLOFWatch <onboarding@resend.dev>` | Email sender address |
 | `ML_BLEND_RATIO` | — | `0.4` | ML/formula blend (0.0–1.0) |
+| `GEMINI_API_KEY` | ✅ (for chatbot) | (empty) | Google Gemini API key for GLOF-Bot AI |
+| `VAPID_PRIVATE_KEY` | ✅ (for push) | (empty) | VAPID private key for Web Push signing |
+| `VAPID_PUBLIC_KEY` | ✅ (for push) | (empty) | VAPID public key sent to browsers |
+| `VAPID_CLAIMS_EMAIL` | — | `mailto:admin@glof.in` | VAPID contact email |
 | `ADMIN_EMAIL` | — | — | Custom admin email |
 | `ADMIN_PASSWORD` | — | — | Custom admin password |
 | `ADMIN_NAME` | — | `Admin` | Custom admin display name |
