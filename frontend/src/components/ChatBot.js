@@ -137,7 +137,7 @@ export default function ChatBot() {
           color: 'white',
         }}
       >
-        {open ? '✕' : <img src={botLogo} alt="GLOF-Bot" style={{ width: 32, height: 32, borderRadius: '50%' }} />}
+        {open ? '✕' : <img src={botLogo} alt="GLOF-Bot" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />}
         {/* Notification badge */}
         {hasNew && !open && (
           <span style={{
