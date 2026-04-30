@@ -208,6 +208,27 @@ def resolve_alert(alert_id):
     return jsonify({"message": "Alert resolved", "resolved_by": user}), 200
 
 
+@alerts_bp.route("/resolve-all", methods=["POST"])
+@jwt_required()
+def resolve_all_alerts():
+    """Admin-only: Mark every open alert as RESOLVED in one shot."""
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+    user = get_jwt_identity()
+    result = _db_alerts.alerts.update_many(
+        {"resolved": False},
+        {"$set": {
+            "resolved": True,
+            "status": "RESOLVED",
+            "resolved_by": user,
+            "resolved_at": datetime.now(tz=timezone.utc).isoformat(),
+        }},
+    )
+    alert_log.info("All alerts resolved", extra={"user": user, "count": result.modified_count})
+    return jsonify({"message": f"Resolved {result.modified_count} alert(s).", "resolved_count": result.modified_count}), 200
+
+
 @alerts_bp.route("/test", methods=["POST"])
 @jwt_required()
 def send_test_alert():

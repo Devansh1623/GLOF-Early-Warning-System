@@ -160,6 +160,10 @@ export default function AdminPage() {
   const [pushSending, setPushSending] = useState(false);
   const [pushResult, setPushResult] = useState('');
 
+  // Resolve all alerts
+  const [resolveAllBusy, setResolveAllBusy] = useState(false);
+  const [resolveAllMsg, setResolveAllMsg] = useState('');
+
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
@@ -298,6 +302,21 @@ export default function AdminPage() {
       setPushResult(`✗ ${err.message}`);
     }
     setPushSending(false);
+  };
+
+  const handleResolveAll = async () => {
+    if (!window.confirm('Resolve ALL open alerts? This cannot be undone.')) return;
+    setResolveAllBusy(true);
+    setResolveAllMsg('');
+    try {
+      const res = await authFetch('/api/alerts/resolve-all', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to resolve alerts');
+      setResolveAllMsg(`✓ ${data.message}`);
+    } catch (err) {
+      setResolveAllMsg(`✗ ${err.message}`);
+    }
+    setResolveAllBusy(false);
   };
 
   return (
@@ -510,6 +529,51 @@ export default function AdminPage() {
               color: pushResult.startsWith('✓') ? 'var(--risk-low)' : 'var(--error)',
               border: `1px solid ${pushResult.startsWith('✓') ? 'rgba(158,207,209,0.2)' : 'rgba(255,180,171,0.2)'}`,
             }}>{pushResult}</div>
+          )}
+        </div>
+
+        {/* Row 3: Resolve All Alerts — danger zone */}
+        <div style={{
+          background: 'var(--surface-default)',
+          borderRadius: 'var(--radius-2xl)',
+          padding: 24,
+          border: '1px solid rgba(255,180,171,0.15)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 'var(--radius-xl)',
+                background: 'rgba(255,180,171,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, fontSize: 22,
+              }}>✅</div>
+              <div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.9375rem', color: 'var(--on-surface)', marginBottom: 3 }}>
+                  Resolve All Open Alerts
+                </div>
+                <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--on-surface-variant)', lineHeight: 1.6 }}>
+                  Mark every currently open alert as resolved in one click. Use after a drill or to clear stale alerts.
+                </div>
+              </div>
+            </div>
+            <button
+              id="resolve-all-alerts-btn"
+              className="btn btn-danger"
+              onClick={handleResolveAll}
+              disabled={resolveAllBusy}
+              style={{ padding: '12px 24px', whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              {resolveAllBusy ? '⏳ Resolving…' : '✅ Resolve All Alerts'}
+            </button>
+          </div>
+          {resolveAllMsg && (
+            <div style={{
+              marginTop: 14, padding: '9px 14px', borderRadius: 'var(--radius-xl)',
+              fontFamily: 'var(--font-body)', fontSize: '0.8125rem',
+              background: resolveAllMsg.startsWith('✓') ? 'rgba(158,207,209,0.08)' : 'rgba(255,180,171,0.08)',
+              color: resolveAllMsg.startsWith('✓') ? 'var(--risk-low)' : 'var(--error)',
+              border: `1px solid ${resolveAllMsg.startsWith('✓') ? 'rgba(158,207,209,0.2)' : 'rgba(255,180,171,0.2)'}`,
+            }}>{resolveAllMsg}</div>
           )}
         </div>
 
