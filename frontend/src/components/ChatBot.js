@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { authFetch } from '../utils/helpers';
+import botLogo from '../assets/chatbot-logo.png';
 
 const QUICK_CHIPS = [
   'Which lake has the highest risk?',
@@ -136,7 +137,7 @@ export default function ChatBot() {
           color: 'white',
         }}
       >
-        {open ? '✕' : '🏔️'}
+        {open ? '✕' : <img src={botLogo} alt="GLOF-Bot" style={{ width: 32, height: 32, borderRadius: '50%' }} />}
         {/* Notification badge */}
         {hasNew && !open && (
           <span style={{
@@ -171,7 +172,7 @@ export default function ChatBot() {
           borderBottom: '1px solid rgba(196,247,249,0.08)',
           background: 'rgba(26,60,94,0.6)',
         }}>
-          <span style={{ fontSize: 20 }}>🏔️</span>
+          <img src={botLogo} alt="GLOF-Bot" style={{ width: 28, height: 28, borderRadius: '50%' }} />
           <div style={{ flex: 1 }}>
             <div style={{
               fontFamily: 'var(--font-display)', fontWeight: 700,
@@ -219,12 +220,10 @@ export default function ChatBot() {
                 justifyContent: isUser ? 'flex-end' : 'flex-start',
               }}>
                 {!isUser && (
-                  <span style={{
+                  <img src={botLogo} alt="GLOF-Bot" style={{
                     width: 26, height: 26, borderRadius: '50%',
-                    background: 'rgba(26,60,94,0.8)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14, flexShrink: 0, marginRight: 7, marginTop: 2,
-                  }}>🏔️</span>
+                    flexShrink: 0, marginRight: 7, marginTop: 2,
+                  }} />
                 )}
                 <div style={{
                   maxWidth: '80%',
@@ -251,12 +250,10 @@ export default function ChatBot() {
           {/* Typing indicator */}
           {loading && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span style={{
+              <img src={botLogo} alt="GLOF-Bot" style={{
                 width: 26, height: 26, borderRadius: '50%',
-                background: 'rgba(26,60,94,0.8)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 14, flexShrink: 0,
-              }}>🏔️</span>
+                flexShrink: 0,
+              }} />
               <div style={{
                 background: 'rgba(26,60,94,0.5)',
                 border: '1px solid rgba(196,247,249,0.06)',
