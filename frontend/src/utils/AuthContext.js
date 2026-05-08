@@ -5,11 +5,15 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser]     = useState(null);
-  const [token, setToken]   = useState(localStorage.getItem('glof_token'));
+  // Token may live in either storage — check both on mount.
+  const [token, setToken]   = useState(
+    () => localStorage.getItem('glof_token') || sessionStorage.getItem('glof_token')
+  );
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
     localStorage.removeItem('glof_token');
+    sessionStorage.removeItem('glof_token');
     setToken(null);
     setUser(null);
   }, []);
@@ -28,7 +32,7 @@ export function AuthProvider({ children }) {
       }
     }
     setLoading(false);
-  }, [token]);
+  }, [token, logout]);
 
   useEffect(() => {
     const handleExpired = () => logout();
@@ -36,21 +40,36 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('auth-expired', handleExpired);
   }, [logout]);
 
-  const login = async (email, password) => {
+  /** Persist token in localStorage (remember=true) or sessionStorage (remember=false). */
+  const _storeToken = (tok, remember) => {
+    if (remember) {
+      localStorage.setItem('glof_token', tok);
+      sessionStorage.removeItem('glof_token');
+    } else {
+      sessionStorage.setItem('glof_token', tok);
+      localStorage.removeItem('glof_token');
+    }
+  };
+
+  const login = async (email, password, rememberMe = false) => {
     const res = await fetchWithFailover('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, remember_me: rememberMe }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Login failed');
-    localStorage.setItem('glof_token', data.token);
+    _storeToken(data.token, rememberMe);
     setToken(data.token);
     setUser(data.user);
     return data;
   };
 
-  const register = async (email, password, name) => {
+  /**
+   * Register then immediately log in — a single extra round-trip
+   * (register returns no token, so we must login after).
+   */
+  const register = async (email, password, name, rememberMe = false) => {
     const res = await fetchWithFailover('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,7 +77,8 @@ export function AuthProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Registration failed');
-    return data;
+    // Immediately log in — returns full user + token
+    return login(email, password, rememberMe);
   };
 
   const forgotPassword = async (email) => {

@@ -197,9 +197,11 @@ def create_demo_users(database):
             "role": "admin",
         })
 
+    # Use 10 rounds (same as auth routes) for faster startup
+    _rounds = int(os.environ.get("BCRYPT_ROUNDS", 10))
     for u in defaults:
         if not database.users.find_one({"email": u["email"]}):
-            hashed = bcrypt.hashpw(u["password"].encode(), bcrypt.gensalt())
+            hashed = bcrypt.hashpw(u["password"].encode(), bcrypt.gensalt(rounds=_rounds))
             database.users.insert_one({
                 "email": u["email"], "name": u["name"], "role": u["role"],
                 "password": hashed, "created_at": datetime.now(tz=timezone.utc),
