@@ -9,6 +9,10 @@ import os
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
 import bcrypt
+
+# Work factor: 10 rounds ≈ 60-100 ms (vs default 12 ≈ 250-400 ms).
+# Still cryptographically strong; OWASP minimum is 10.
+_BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", 10))
 import resend
 
 from core.schemas import (
@@ -63,7 +67,7 @@ def register():
     if _db.users.find_one({"email": email}):
         return jsonify({"error": "An account with this email already exists."}), 409
 
-    hashed = bcrypt.hashpw(data["password"].encode("utf-8"), bcrypt.gensalt())
+    hashed = bcrypt.hashpw(data["password"].encode("utf-8"), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS))
     _db.users.insert_one({
         "email": email,
         "name": data["name"] or email.split("@")[0],
@@ -109,6 +113,8 @@ def login():
         return jsonify({"error": "Validation failed", "details": errors}), 422
 
     email = data["email"].strip().lower()
+    remember_me = bool(raw.get("remember_me", False))
+
     user = _db.users.find_one({"email": email})
     if not user:
         auth_log.warning("Failed login attempt", extra={"user": email})
@@ -122,14 +128,25 @@ def login():
         auth_log.warning("Failed login attempt (bad password)", extra={"user": email})
         return jsonify({"error": "Invalid credentials."}), 401
 
+    # 30 days if "remember me", otherwise 24 hours
+    expires = timedelta(days=30) if remember_me else timedelta(hours=24)
     token = create_access_token(
         identity=email,
-        additional_claims={"role": user.get("role", "user"), "name": user.get("name", "")},
+        expires_delta=expires,
+        additional_claims={
+            "role": user.get("role", "user"),
+            "name": user.get("name", ""),
+            "remember": remember_me,
+        },
     )
 
-    auth_log.info("User logged in", extra={"user": email})
+    auth_log.info(
+        "User logged in",
+        extra={"user": email, "remember_me": remember_me, "token_days": 30 if remember_me else 1},
+    )
     return jsonify({
         "token": token,
+        "remember_me": remember_me,
         "user": {"email": user["email"], "name": user.get("name", ""), "role": user.get("role", "user")},
     }), 200
 

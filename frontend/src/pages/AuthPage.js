@@ -12,6 +12,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -27,11 +28,10 @@ export default function AuthPage() {
     
     try {
       if (step === 'login') {
-        await login(email, password);
+        await login(email, password, rememberMe);
         navigate('/dashboard', { replace: true });
       } else if (step === 'register') {
-        await register(email, password, name);
-        await login(email, password);
+        await register(email, password, name, rememberMe);
         navigate('/dashboard', { replace: true });
       } else if (step === 'forgot') {
         await forgotPassword(email);
@@ -193,6 +193,31 @@ export default function AuthPage() {
                   {showPw ? 'Hide' : 'Show'}
                 </button>
               </div>
+
+              {/* Remember Me — shown on login and register steps */}
+              {(step === 'login' || step === 'register') && (
+                <label
+                  htmlFor="remember-me"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    marginTop: 10, cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)', fontSize: '0.6875rem',
+                    color: 'var(--outline)', userSelect: 'none',
+                  }}
+                >
+                  <input
+                    id="remember-me"
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    style={{
+                      accentColor: 'var(--primary)', width: 14, height: 14,
+                      flexShrink: 0, cursor: 'pointer',
+                    }}
+                  />
+                  Remember me for 30 days
+                </label>
+              )}
             </div>
           )}
 

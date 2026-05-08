@@ -96,6 +96,38 @@ body {
   overflow: auto;
   min-height: 100vh;
   line-height: 1.6;
+  /* ── Glacial Ice Cursor ── */
+  cursor: url('/cursors/cursor-arrow.png') 4 2, auto;
+}
+
+/* All interactive / pointer-type elements get the glacial hand */
+a,
+button,
+[role="button"],
+.btn,
+select,
+input[type="checkbox"],
+input[type="radio"],
+input[type="submit"],
+input[type="button"],
+input[type="file"]::file-selector-button,
+[tabindex]:not([tabindex="-1"]),
+.sidebar-nav a,
+.sidebar-logo,
+.card-lit,
+[style*="cursor: pointer"],
+[style*="cursor:pointer"] {
+  cursor: url('/cursors/cursor-pointer.png') 10 4, pointer;
+}
+
+/* Text inputs keep text cursor */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="number"],
+textarea {
+  cursor: text;
 }
 
 #root { min-height: 100vh; }
@@ -373,7 +405,7 @@ a:hover { color: var(--primary-container); }
   font-family: var(--font-display);
   font-size: 0.8125rem;
   font-weight: 600;
-  cursor: pointer;
+  cursor: url('/cursors/cursor-pointer.png') 10 4, pointer;
   transition: all 0.2s ease;
   border: none;
   letter-spacing: -0.01em;
@@ -445,7 +477,7 @@ a:hover { color: var(--primary-container); }
 
 .input::placeholder { color: var(--outline); }
 
-select.input { cursor: pointer; }
+select.input { cursor: url('/cursors/cursor-pointer.png') 10 4, pointer; }
 textarea.input { line-height: 1.6; }
 
 /* ─── Tables ─────────────────────────────────────────────── */
