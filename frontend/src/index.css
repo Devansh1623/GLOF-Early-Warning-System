@@ -97,7 +97,7 @@ body {
   min-height: 100vh;
   line-height: 1.6;
   /* ── Glacial Ice Cursor ── */
-  cursor: url('/cursors/cursor-arrow.png') 4 2, auto;
+  cursor: url('./assets/cursors/cursor-arrow.png') 4 2, auto;
 }
 
 /* All interactive / pointer-type elements get the glacial hand */
@@ -117,7 +117,7 @@ input[type="file"]::file-selector-button,
 .card-lit,
 [style*="cursor: pointer"],
 [style*="cursor:pointer"] {
-  cursor: url('/cursors/cursor-pointer.png') 10 4, pointer;
+  cursor: url('./assets/cursors/cursor-pointer.png') 10 4, pointer;
 }
 
 /* Text inputs keep text cursor */
@@ -405,7 +405,7 @@ a:hover { color: var(--primary-container); }
   font-family: var(--font-display);
   font-size: 0.8125rem;
   font-weight: 600;
-  cursor: url('/cursors/cursor-pointer.png') 10 4, pointer;
+  cursor: url('./assets/cursors/cursor-pointer.png') 10 4, pointer;
   transition: all 0.2s ease;
   border: none;
   letter-spacing: -0.01em;
@@ -477,7 +477,7 @@ a:hover { color: var(--primary-container); }
 
 .input::placeholder { color: var(--outline); }
 
-select.input { cursor: url('/cursors/cursor-pointer.png') 10 4, pointer; }
+select.input { cursor: url('./assets/cursors/cursor-pointer.png') 10 4, pointer; }
 textarea.input { line-height: 1.6; }
 
 /* ─── Tables ─────────────────────────────────────────────── */
