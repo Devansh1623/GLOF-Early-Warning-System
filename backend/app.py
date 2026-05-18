@@ -1307,38 +1307,37 @@ INSTRUCTIONS:
 """
 
 
-    # ── Rule-based fallback (no API key) ────────────────────────────────────
-    if not gemini_key:
-        # Simple rule engine as fallback
+    # ── Rule-based helper (used as fallback when Gemini is unavailable) ─────
+    def rule_based_reply():
         msg_lower = user_message.lower()
         highest = lakes_ctx[0] if lakes_ctx else None
         if any(w in msg_lower for w in ["highest", "worst", "critical", "most dangerous"]):
             if highest:
-                reply = (f"The highest-risk lake right now is **{highest['name']}** "
-                         f"({highest['id']}) in {highest['state']} with risk level "
-                         f"**{highest['current_risk_level']}** (score: {highest['current_risk_score']:.1f}). "
-                         f"It is in the {highest['river_basin']} river basin.")
-            else:
-                reply = "No lake data is available at the moment."
-        elif any(w in msg_lower for w in ["alert", "alerts", "active"]):
-            reply = f"There are currently **{active_alerts} active unresolved alert(s)** in the system. You can view and acknowledge them in the Alerts panel."
-        elif any(w in msg_lower for w in ["safe", "all safe", "ok"]):
+                return (f"The highest-risk lake right now is **{highest['name']}** "
+                        f"({highest['id']}) in {highest['state']} with risk level "
+                        f"**{highest['current_risk_level']}** (score: {highest['current_risk_score']:.1f}). "
+                        f"It is in the {highest['river_basin']} river basin.")
+            return "No lake data is available at the moment."
+        if any(w in msg_lower for w in ["alert", "alerts", "active"]):
+            return f"There are currently **{active_alerts} active unresolved alert(s)** in the system."
+        if any(w in msg_lower for w in ["safe", "all safe", "ok"]):
             if critical_count == 0:
-                reply = "✅ All monitored lakes are currently below Critical risk. Continue monitoring."
-            else:
-                reply = f"⚠️ **{critical_count} lake(s) are at Critical risk** right now. Immediate monitoring is advised."
-        elif any(w in msg_lower for w in ["evacuate", "evacuation", "escape", "run"]):
-            reply = ("In case of a GLOF emergency: **move to higher ground immediately**, avoid river banks and valleys. "
-                     "Contact NDMA (011-26701700) or SDMA for your state. Do not wait for official confirmation if water levels are rising fast.")
-        elif any(w in msg_lower for w in ["hello", "hi", "hey", "help"]):
-            reply = ("Hello! I'm GLOF-Bot 🏔️. I can help you check lake risk levels, understand alerts, "
-                     "and advise on flood preparedness. Try asking: *'Which lake has the highest risk?'*")
-        elif any(w in msg_lower for w in ["how many lakes", "total lakes", "count"]):
-            reply = f"GLOFWatch is currently monitoring **{len(lakes_ctx)}+ glacial lakes** across the Himalayan region."
-        else:
-            reply = ("I'm GLOF-Bot. I can answer questions about lake risk levels, active alerts, and flood preparedness. "
-                     "Try: *'What is the current risk for GL001?'* or *'Which lake is most dangerous?'*")
-        return jsonify({"reply": reply, "mode": "rule-based"}), 200
+                return "✅ All monitored lakes are currently below Critical risk. Continue monitoring."
+            return f"⚠️ **{critical_count} lake(s) are at Critical risk** right now. Immediate monitoring is advised."
+        if any(w in msg_lower for w in ["evacuate", "evacuation", "escape", "run"]):
+            return ("In case of a GLOF emergency: **move to higher ground immediately**, avoid river banks and valleys. "
+                    "Contact NDMA (011-26701700) or SDMA for your state.")
+        if any(w in msg_lower for w in ["hello", "hi", "hey", "help"]):
+            return ("Hello! I'm GLOF-Bot 🏔️. I can help you check lake risk levels, understand alerts, "
+                    "and advise on flood preparedness. Try asking: *'Which lake has the highest risk?'*")
+        if any(w in msg_lower for w in ["how many lakes", "total lakes", "count"]):
+            return f"GLOFWatch is currently monitoring **{len(lakes_ctx)}+ glacial lakes** across the Himalayan region."
+        return ("I'm GLOF-Bot. I can answer questions about lake risk levels, active alerts, and flood preparedness. "
+                "Try: *'Which lake has the highest risk?'* or *'How many active alerts?'*")
+
+    # ── No key → rule-based only ──────────────────────────────────────────────
+    if not gemini_key:
+        return jsonify({"reply": rule_based_reply(), "mode": "rule-based"}), 200
 
     # ── Gemini API call (google-genai SDK) ───────────────────────────────────
     try:
@@ -1367,17 +1366,26 @@ INSTRUCTIONS:
             ),
         )
         reply = response.text
-
         return jsonify({"reply": reply, "mode": "gemini"}), 200
 
     except Exception as e:
         err_str = str(e)
         app_log.warning(f"Gemini API error: {err_str}")
+
+        # ── Quota exhausted (429) → fall back to rule-based gracefully ───────
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            fallback = rule_based_reply()
+            return jsonify({
+                "reply": f"{fallback}\n\n_ℹ️ AI mode temporarily unavailable (quota limit). Showing rule-based response._",
+                "mode": "rule-based-fallback",
+            }), 200
+
+        # ── Any other error → still try rule-based rather than crashing ──────
         return jsonify({
-            "error": "AI service error occurred",
+            "reply": rule_based_reply(),
+            "mode": "rule-based-fallback",
             "debug": err_str,
-            "reply": f"⚠️ AI error: {err_str[:120]}",
-        }), 503
+        }), 200
 
 
 if __name__ == "__main__":
