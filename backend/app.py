@@ -252,6 +252,13 @@ def root():
     return jsonify({"service": "GLOF Early Warning System API", "version": "2.1.0", "status": "ok"})
 
 
+# /health alias — Render may use this path if dashboard overrides render.yaml
+@app.route("/health")
+def health_alias():
+    """Simple health check alias for Render's internal port scanner."""
+    return jsonify({"status": "ok"}), 200
+
+
 # ─── Service Health Endpoint ──────────────────────────────────────────────────
 @app.route("/api/health")
 def health_check():
