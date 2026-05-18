@@ -51,6 +51,19 @@ export function AuthProvider({ children }) {
     }
   };
 
+  /** Extract the most readable error message from an API response body. */
+  const _extractError = (data, fallback) => {
+    if (!data) return fallback;
+    if (data.details && typeof data.details === 'object') {
+      // Flatten marshmallow validation details: { email: ["Not a valid email."] }
+      const first = Object.entries(data.details)
+        .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs[0] : msgs}`)
+        .join('; ');
+      if (first) return first;
+    }
+    return data.error || fallback;
+  };
+
   const login = async (email, password, rememberMe = false) => {
     const res = await fetchWithFailover('/api/auth/login', {
       method: 'POST',
@@ -58,7 +71,7 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email, password, remember_me: rememberMe }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Login failed');
+    if (!res.ok) throw new Error(_extractError(data, 'Login failed'));
     _storeToken(data.token, rememberMe);
     setToken(data.token);
     setUser(data.user);
@@ -76,7 +89,7 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email, password, name }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    if (!res.ok) throw new Error(_extractError(data, 'Registration failed'));
     // Immediately log in — returns full user + token
     return login(email, password, rememberMe);
   };
@@ -88,7 +101,7 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to request password reset');
+    if (!res.ok) throw new Error(_extractError(data, 'Failed to request password reset'));
     return data;
   };
 
@@ -99,7 +112,7 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email, code, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+    if (!res.ok) throw new Error(_extractError(data, 'Failed to reset password'));
     return data;
   };
 
