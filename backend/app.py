@@ -252,6 +252,63 @@ def root():
     return jsonify({"service": "GLOF Early Warning System API", "version": "2.1.0", "status": "ok"})
 
 
+# ─── Service Health Endpoint ──────────────────────────────────────────────────
+@app.route("/api/health")
+def health_check():
+    """
+    Detailed service health check for monitoring tools (e.g. Uptime Kuma).
+    Returns individual status of MongoDB, Redis, and Celery.
+    ---
+    tags:
+      - Health
+    responses:
+      200:
+        description: All services healthy
+      503:
+        description: One or more services are degraded
+    """
+    services = {}
+    overall_ok = True
+
+    # ── MongoDB ───────────────────────────────────────────────────────────────
+    try:
+        mongo_client.admin.command("ping")
+        services["mongodb"] = {"status": "ok", "latency_ms": None}
+        t0 = time.perf_counter()
+        mongo_client.admin.command("ping")
+        services["mongodb"]["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    except Exception as e:
+        services["mongodb"] = {"status": "error", "detail": str(e)}
+        overall_ok = False
+
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    try:
+        t0 = time.perf_counter()
+        redis_client.ping()
+        services["redis"] = {
+            "status": "ok",
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+        }
+    except Exception as e:
+        services["redis"] = {"status": "error", "detail": str(e)}
+        overall_ok = False
+
+    # ── Celery ────────────────────────────────────────────────────────────────
+    services["celery"] = {
+        "status": "ok" if _CELERY_AVAILABLE else "unavailable",
+        "detail": None if _CELERY_AVAILABLE else "Celery not installed or broker unreachable",
+    }
+
+    # ── Response ──────────────────────────────────────────────────────────────
+    payload = {
+        "status": "ok" if overall_ok else "degraded",
+        "version": "2.1.0",
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "services": services,
+    }
+    return jsonify(payload), 200 if overall_ok else 503
+
+
 
 # ─── Telemetry Endpoint ────────────────────────────────────────────────────────
 @app.route("/api/telemetry", methods=["POST"])
