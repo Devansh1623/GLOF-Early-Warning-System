@@ -1333,24 +1333,32 @@ INSTRUCTIONS:
                      "Try: *'What is the current risk for GL001?'* or *'Which lake is most dangerous?'*")
         return jsonify({"reply": reply, "mode": "rule-based"}), 200
 
-    # ── Gemini API call ───────────────────────────────────────────────────────
+    # ── Gemini API call (google-genai SDK) ───────────────────────────────────
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=gemini_key)
+        from google import genai
+        from google.genai import types
 
-        # Build full prompt: system context + chat history + current message
+        client = genai.Client(api_key=gemini_key)
+
+        # Build chat history
         contents = []
-        for h in history[-8:]:  # last 8 turns for context window
+        for h in history[-8:]:
             role = "user" if h.get("role") == "user" else "model"
-            contents.append({"role": role, "parts": [{"text": h.get("text", "")}]})
-        # Append the current user message
-        contents.append({"role": "user", "parts": [{"text": user_message}]})
-
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
-            system_instruction=system_prompt,
+            contents.append(
+                types.Content(role=role, parts=[types.Part(text=h.get("text", ""))])
+            )
+        # Append current user message
+        contents.append(
+            types.Content(role="user", parts=[types.Part(text=user_message)])
         )
-        response = model.generate_content(contents)
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+            ),
+        )
         reply = response.text
 
         return jsonify({"reply": reply, "mode": "gemini"}), 200
@@ -1358,10 +1366,9 @@ INSTRUCTIONS:
     except Exception as e:
         err_str = str(e)
         app_log.warning(f"Gemini API error: {err_str}")
-        # Return the real error in dev so it can be diagnosed; still safe in prod
         return jsonify({
             "error": "AI service error occurred",
-            "debug": err_str,          # visible in browser Network tab
+            "debug": err_str,
             "reply": f"⚠️ AI error: {err_str[:120]}",
         }), 503
 
