@@ -39,6 +39,7 @@ class RegisterSchema(Schema):
 class LoginSchema(Schema):
     email = fields.Email(required=True)
     password = fields.Str(required=True)
+    remember_me = fields.Bool(load_default=False)  # forwarded by frontend — must not be rejected
 
 
 class ForgotPasswordSchema(Schema):
