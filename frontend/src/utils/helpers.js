@@ -31,7 +31,8 @@ export function fmt(val, suffix = '', decimals = 1) {
 
 
 export function authFetch(path, options = {}) {
-  const token = localStorage.getItem('glof_token');
+  // Token lives in localStorage (remember=true) or sessionStorage (remember=false) — check both.
+  const token = localStorage.getItem('glof_token') || sessionStorage.getItem('glof_token');
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
