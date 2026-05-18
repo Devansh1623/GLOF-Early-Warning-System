@@ -18,16 +18,25 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  /** Safely decode a base64url-encoded JWT segment (handles - and _ chars). */
+  const base64UrlDecode = (segment) => {
+    // base64url → base64: replace URL-safe chars and pad to multiple of 4
+    const b64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
+    return JSON.parse(atob(padded));
+  };
+
   useEffect(() => {
     if (token) {
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = base64UrlDecode(token.split('.')[1]);
         if (payload.exp && payload.exp * 1000 < Date.now()) {
           logout();
         } else {
           setUser({ email: payload.sub, role: payload.role, name: payload.name });
         }
       } catch {
+        // Token is malformed — clear it
         logout();
       }
     }
