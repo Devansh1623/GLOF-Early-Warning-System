@@ -1337,26 +1337,33 @@ INSTRUCTIONS:
     try:
         import google.generativeai as genai
         genai.configure(api_key=gemini_key)
+
+        # Build full prompt: system context + chat history + current message
+        contents = []
+        for h in history[-8:]:  # last 8 turns for context window
+            role = "user" if h.get("role") == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": h.get("text", "")}]})
+        # Append the current user message
+        contents.append({"role": "user", "parts": [{"text": user_message}]})
+
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-1.5-flash-latest",
             system_instruction=system_prompt,
         )
-
-        # Build chat history for Gemini
-        gemini_history = []
-        for h in history[-10:]:  # last 10 turns max
-            role = "user" if h.get("role") == "user" else "model"
-            gemini_history.append({"role": role, "parts": [h.get("text", "")]})
-
-        chat = model.start_chat(history=gemini_history)
-        response = chat.send_message(user_message)
+        response = model.generate_content(contents)
         reply = response.text
 
         return jsonify({"reply": reply, "mode": "gemini"}), 200
 
     except Exception as e:
-        app_log.warning(f"Gemini API error: {e}")
-        return jsonify({"error": "AI service error occurred", "reply": "I'm having trouble connecting to the AI service right now. Please try again in a moment."}), 503
+        err_str = str(e)
+        app_log.warning(f"Gemini API error: {err_str}")
+        # Return the real error in dev so it can be diagnosed; still safe in prod
+        return jsonify({
+            "error": "AI service error occurred",
+            "debug": err_str,          # visible in browser Network tab
+            "reply": f"⚠️ AI error: {err_str[:120]}",
+        }), 503
 
 
 if __name__ == "__main__":
