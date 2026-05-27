@@ -23,8 +23,11 @@ class RegisterSchema(Schema):
         required=True, validate=validate.Length(min=6, max=128)
     )
     name = fields.Str(validate=validate.Length(max=100), load_default="")
+    # Role is always forced to "user" on self-registration.
+    # Admin accounts are created via ADMIN_EMAIL/ADMIN_PASSWORD env vars
+    # or the create_demo_users bootstrap function — never via the public API.
     role = fields.Str(
-        validate=validate.OneOf(["admin", "user"]), load_default="user"
+        validate=validate.OneOf(["user"]), load_default="user"
     )
     # Optional — used for SMS alerts. Must be E.164 e.g. +919876543210
     phone = fields.Str(
