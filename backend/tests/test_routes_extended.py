@@ -4,7 +4,6 @@ Extended route tests: lakes, events, alerts admin actions, push, password reset,
 from datetime import datetime, timedelta, timezone
 
 import mongomock
-import pytest
 from bson import ObjectId
 from flask import Flask
 
@@ -15,19 +14,7 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture(autouse=True)
-def stub_queues(monkeypatch):
-    """Replace background job enqueuers so tests never touch Celery/Mongo workers."""
-    calls = {"email": [], "push": []}
-
-    def fake_email(users, subject, message, metadata=None):
-        calls["email"].append((users, subject, message))
-        return {"queued": len(users), "skipped": []}
-
-    monkeypatch.setattr(data_routes, "enqueue_email_jobs", fake_email)
-    monkeypatch.setattr(data_routes, "enqueue_alert_push_notifications",
-                        lambda payload: calls["push"].append(payload))
-    return calls
+# Background queues are stubbed for every test by the autouse `stub_queues` fixture in conftest.py.
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────

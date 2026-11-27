@@ -18,6 +18,22 @@ for mod in ["celery", "celery_app", "flasgger", "prometheus_flask_exporter",
 import mongomock
 
 
+@pytest.fixture(autouse=True)
+def stub_queues(monkeypatch):
+    """Replace background job enqueuers so no test touches a real MongoDB or Celery."""
+    import routes.data as data_routes
+    calls = {"email": [], "push": []}
+
+    def fake_email(users, subject, message, metadata=None):
+        calls["email"].append((users, subject, message))
+        return {"queued": len(users), "skipped": []}
+
+    monkeypatch.setattr(data_routes, "enqueue_email_jobs", fake_email)
+    monkeypatch.setattr(data_routes, "enqueue_alert_push_notifications",
+                        lambda payload: calls["push"].append(payload))
+    return calls
+
+
 @pytest.fixture
 def mock_db():
     """In-memory MongoDB using mongomock."""
