@@ -123,8 +123,10 @@ class TestAnomalyScore:
         assert pred in (1, -1)
         assert isinstance(raw, float)
 
-    def test_no_model_returns_normal(self):
+    def test_no_model_returns_normal(self, monkeypatch):
         # With no model loaded, should return (1, 0.0) — normal
+        import core.risk_engine as risk_engine
+        monkeypatch.setattr(risk_engine, "_iso_forest", None)
         pred, raw = anomaly_score(10, 30, 80)
         assert pred == 1
         assert raw == 0.0

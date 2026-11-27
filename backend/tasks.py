@@ -8,8 +8,7 @@ from celery_app import celery_app
 from core.logger import get_logger
 from core.notifications import send_email, send_alert_email
 from core.push import send_web_push
-from core.sms import send_sms, send_whatsapp
-
+from core.sms import send_sms
 
 
 task_log = get_logger("glof.tasks")
@@ -78,7 +77,7 @@ def enqueue_alert_push_notifications(alert_payload: dict):
     queued = 0
 
     subscriptions = list(db.push_subscriptions.find({}))
-    
+
     for sub in subscriptions:
         notification_id = str(uuid.uuid4())
         db.notification_jobs.insert_one({
@@ -153,8 +152,6 @@ def enqueue_alert_sms(users, alert_payload: dict):
     return {"queued": queued, "skipped": skipped}
 
 
-
-
 # ── Broadcast email queue (admin broadcasts) ──────────────────────────────────
 
 
@@ -211,16 +208,16 @@ def deliver_alert_email_task(self, notification_id: str):
 
     payload = notification.get("payload", {})
     result = send_alert_email(
-        to_email        = notification.get("to", ""),
-        lake_name       = payload.get("lake_name", "Unknown Lake"),
-        risk_level      = payload.get("risk_level", "High"),
-        risk_score      = float(payload.get("risk_score", 0)),
-        alert_type      = payload.get("alert_type", "Warning"),
-        alert_message   = payload.get("alert_message", ""),
-        breakdown       = payload.get("breakdown", {}),
-        timestamp       = payload.get("timestamp", datetime.now(tz=timezone.utc).isoformat()),
-        lake_state      = payload.get("lake_state", ""),
-        lake_elevation  = payload.get("lake_elevation", ""),
+        to_email=notification.get("to", ""),
+        lake_name=payload.get("lake_name", "Unknown Lake"),
+        risk_level=payload.get("risk_level", "High"),
+        risk_score=float(payload.get("risk_score", 0)),
+        alert_type=payload.get("alert_type", "Warning"),
+        alert_message=payload.get("alert_message", ""),
+        breakdown=payload.get("breakdown", {}),
+        timestamp=payload.get("timestamp", datetime.now(tz=timezone.utc).isoformat()),
+        lake_state=payload.get("lake_state", ""),
+        lake_elevation=payload.get("lake_elevation", ""),
     )
     _record_result(db, notification_id, notification, result)
     if not result.get("ok"):
@@ -296,18 +293,18 @@ def deliver_push_task(self, notification_id: str):
 
     sub_info = notification.get("subscription_info", {})
     payload = notification.get("payload", {})
-    
+
     # Format message for the service worker
     message_data = {
         "title": f"GLOF {payload.get('alert_type', 'Alert')}: {payload.get('lake_name', 'Lake')}",
         "body": payload.get("alert_message", "A new alert has been triggered."),
-        "url": "/notifications", 
+        "url": "/notifications",
         "icon": "/logo192.png",
         "data": payload
     }
-    
+
     result = send_web_push(sub_info, message_data)
-    
+
     if not result.get("ok"):
         status_code = result.get("status_code")
         if status_code in [404, 410]:
@@ -316,7 +313,7 @@ def deliver_push_task(self, notification_id: str):
             task_log.info("Removed expired push subscription", extra={"endpoint": sub_info.get("endpoint")})
             return result
         raise RuntimeError(str(result.get("reason") or "delivery_failed"))
-        
+
     return result
 
 
@@ -340,9 +337,8 @@ def deliver_sms_task(self, notification_id: str):
         notification.get("to", ""),
         notification.get("message_body", "")
     )
-    
+
     _record_result(db, notification_id, notification, result)
     if not result.get("ok"):
         raise RuntimeError(str(result.get("reason") or "delivery_failed"))
     return result
-

@@ -41,8 +41,8 @@ from bson import ObjectId
 import redis
 from dotenv import load_dotenv
 
-from routes.auth import auth_bp, init_auth
-from routes.data import lakes_bp, events_bp, alerts_bp, init_lakes, init_events, init_alerts
+from routes.auth import init_auth
+from routes.data import init_lakes, init_events, init_alerts
 from models.seed import seed_database
 from core.risk_engine import calculate_risk, should_alert
 from core.schemas import TelemetrySchema, validate_json
@@ -54,15 +54,19 @@ try:
     _CELERY_AVAILABLE = True
 except ImportError:
     _CELERY_AVAILABLE = False
+
     def enqueue_email_jobs(*args, **kwargs):  # noqa: E301
         """Fallback when Celery is unavailable."""
         return {"queued": 0, "skipped": []}
+
     def enqueue_alert_emails(*args, **kwargs):  # noqa: E301
         """Fallback when Celery is unavailable."""
         return {"queued": 0, "skipped": []}
+
     def enqueue_alert_push_notifications(*args, **kwargs):  # noqa: E301
         """Fallback when Celery is unavailable."""
         return {"queued": 0}
+
     def enqueue_alert_sms(*args, **kwargs):  # noqa: E301
         """Fallback when Celery is unavailable."""
         return {"queued": 0, "skipped": []}
@@ -160,7 +164,8 @@ def write_audit_log(action: str, actor: str, details: dict = None):
         "remote_addr": request.remote_addr,
     }
     db.audit_logs.insert_one(entry)
-    audit_log.info(action, extra={"user": actor, **{k: v for k, v in (details or {}).items() if isinstance(v, (str, int, float))}})
+    safe_details = {k: v for k, v in (details or {}).items() if isinstance(v, (str, int, float))}
+    audit_log.info(action, extra={"user": actor, **safe_details})
 
 
 def is_alert_suppressed(lake_id: str, alert_type: str) -> bool:
@@ -217,6 +222,7 @@ def create_demo_users(database):
 # ─── Startup (non-blocking) ──────────────────────────────────────────────────
 import threading
 
+
 def _run_startup_tasks():
     try:
         ensure_indexes(db)
@@ -232,6 +238,7 @@ def _run_startup_tasks():
         create_demo_users(db)
     except Exception as _e:
         app_log.warning(f"create_demo_users skipped: {_e}")
+
 
 # Start initialization in background so Gunicorn healthchecks don't timeout
 threading.Thread(target=_run_startup_tasks, daemon=True).start()
@@ -316,7 +323,6 @@ def health_check():
         "services": services,
     }
     return jsonify(payload), 200 if overall_ok else 503
-
 
 
 # ─── Telemetry Endpoint ────────────────────────────────────────────────────────
@@ -442,7 +448,7 @@ def receive_telemetry():
             # ── Email all opted-in users for Warning (≥61) and Emergency (≥80) ──
             # Fetch the lake record so we can add state/elevation to the email
             lake_doc = db.lakes.find_one({"id": lake_id}, {"_id": 0,
-                "state": 1, "elevation_m": 1}) or {}
+                                                           "state": 1, "elevation_m": 1}) or {}
 
             alert_payload = {
                 "lake_id":       lake_id,
@@ -467,12 +473,12 @@ def receive_telemetry():
             if users:
                 q = enqueue_alert_emails(users, alert_payload)
                 push_q = enqueue_alert_push_notifications(alert_payload)
-                
+
                 # Send SMS for Critical and Emergency alerts
                 sms_q = {"queued": 0, "skipped": []}
                 if risk["level"] in ["Critical", "Emergency"]:
                     sms_q = enqueue_alert_sms(users, alert_payload)
-                
+
                 app_log.info(
                     "Alert notifications queued",
                     extra={
@@ -756,8 +762,8 @@ def export_bulk_telemetry():
       204:
         description: No data found for the requested window
     """
-    fmt      = request.args.get("format", "csv").lower()
-    lake_id  = request.args.get("lake_id", "all").strip()
+    fmt = request.args.get("format", "csv").lower()
+    lake_id = request.args.get("lake_id", "all").strip()
     try:
         hours = max(1, min(float(request.args.get("hours", 12)), 720))  # cap at 30 days
     except (ValueError, TypeError):
@@ -789,9 +795,9 @@ def export_bulk_telemetry():
         clean_rows.append({f: r.get(f, "") for f in FIELDS})
 
     # Filename stem
-    lake_tag  = lake_id if lake_id.lower() != "all" else "all_lakes"
-    ts_tag    = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M")
-    stem      = f"glof_{lake_tag}_{int(hours)}h_{ts_tag}"
+    lake_tag = lake_id if lake_id.lower() != "all" else "all_lakes"
+    ts_tag = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M")
+    stem = f"glof_{lake_tag}_{int(hours)}h_{ts_tag}"
 
     # ── CSV ───────────────────────────────────────────────────────────────────
     if fmt == "csv":
@@ -819,11 +825,11 @@ def export_bulk_telemetry():
         ws.title = f"GLOF Telemetry {int(hours)}h"
 
         # ── Header row styling ────────────────────────────────────────────────
-        HEADER_FILL  = PatternFill("solid", fgColor="1A3C5E")
-        HEADER_FONT  = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
-        CELL_ALIGN   = Alignment(horizontal="center", vertical="center")
-        THIN         = Side(style="thin", color="CBD5E1")
-        BORDER       = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+        HEADER_FILL = PatternFill("solid", fgColor="1A3C5E")
+        HEADER_FONT = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+        CELL_ALIGN = Alignment(horizontal="center", vertical="center")
+        THIN = Side(style="thin", color="CBD5E1")
+        BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
         # Column display names
         COL_LABELS = {
@@ -842,8 +848,8 @@ def export_bulk_telemetry():
         ws.append([COL_LABELS.get(f, f) for f in FIELDS])
         for col_idx, _ in enumerate(FIELDS, start=1):
             cell = ws.cell(row=1, column=col_idx)
-            cell.fill   = HEADER_FILL
-            cell.font   = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.font = HEADER_FONT
             cell.alignment = CELL_ALIGN
             cell.border = BORDER
 
@@ -856,7 +862,7 @@ def export_bulk_telemetry():
             "Moderate": "FEF3C7",   # yellow tint
             "High":     "FFEDD5",   # orange tint
             "Critical": "FEE2E2",   # red tint
-            "Emergency":"FCE7F3",   # pink tint
+            "Emergency": "FCE7F3",   # pink tint
         }
 
         for r_idx, row in enumerate(clean_rows, start=2):
@@ -864,7 +870,7 @@ def export_bulk_telemetry():
             row_fill = PatternFill("solid", fgColor=RISK_COLORS.get(level, "FFFFFF")) if level else None
             for c_idx, field in enumerate(FIELDS, start=1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=row.get(field, ""))
-                cell.border    = BORDER
+                cell.border = BORDER
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 if row_fill:
                     cell.fill = row_fill
@@ -1132,7 +1138,7 @@ def telemetry_history_snapshot():
     # Use a 30-min window; widen to 2h for older targets
     window_minutes = 30 if hours_ago < 6 else 120
     window_start = (target_ts - timedelta(minutes=window_minutes)).isoformat()
-    window_end   = target_ts.isoformat()
+    window_end = target_ts.isoformat()
 
     # For hours_ago=0 we just want the absolute latest per lake
     if hours_ago < 0.01:
@@ -1200,7 +1206,7 @@ def glof_chat():
     """
     body = request.get_json(silent=True) or {}
     user_message = (body.get("message") or "").strip()
-    history      = body.get("history", []) or []
+    history = body.get("history", []) or []
 
     if not user_message:
         return jsonify({"error": "message is required"}), 400
@@ -1216,11 +1222,11 @@ def glof_chat():
         .limit(12)
     )
     lake_lines = []
-    for l in lakes_ctx:
+    for lake in lakes_ctx:
         lake_lines.append(
-            f"  • {l.get('name','?')} ({l.get('id','?')}) — {l.get('state','?')}, "
-            f"Risk: {l.get('current_risk_level','?')} ({l.get('current_risk_score',0):.1f}), "
-            f"Basin: {l.get('river_basin','?')}, Elev: {l.get('elevation_m','?')}m"
+            f"  • {lake.get('name','?')} ({lake.get('id','?')}) — {lake.get('state','?')}, "
+            f"Risk: {lake.get('current_risk_level','?')} ({lake.get('current_risk_score',0):.1f}), "
+            f"Basin: {lake.get('river_basin','?')}, Elev: {lake.get('elevation_m','?')}m"
         )
     lake_context = "\n".join(lake_lines) if lake_lines else "No lake data available."
 
@@ -1310,8 +1316,8 @@ INSTRUCTIONS:
 - Risk scale: Low → Moderate → High → Critical → Emergency.
 """
 
-
     # ── Rule-based helper (used as fallback when Gemini is unavailable) ─────
+
     def rule_based_reply():
         msg_lower = user_message.lower()
         highest = lakes_ctx[0] if lakes_ctx else None
@@ -1329,7 +1335,8 @@ INSTRUCTIONS:
                 return "✅ All monitored lakes are currently below Critical risk. Continue monitoring."
             return f"⚠️ **{critical_count} lake(s) are at Critical risk** right now. Immediate monitoring is advised."
         if any(w in msg_lower for w in ["evacuate", "evacuation", "escape", "run"]):
-            return ("In case of a GLOF emergency: **move to higher ground immediately**, avoid river banks and valleys. "
+            return ("In case of a GLOF emergency: **move to higher ground immediately**, "
+                    "avoid river banks and valleys. "
                     "Contact NDMA (011-26701700) or SDMA for your state.")
         if any(w in msg_lower for w in ["hello", "hi", "hey", "help"]):
             return ("Hello! I'm GLOF-Bot 🏔️. I can help you check lake risk levels, understand alerts, "
@@ -1380,7 +1387,10 @@ INSTRUCTIONS:
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
             fallback = rule_based_reply()
             return jsonify({
-                "reply": f"{fallback}\n\n_ℹ️ AI mode temporarily unavailable (quota limit). Showing rule-based response._",
+                "reply": (
+                    f"{fallback}\n\n_ℹ️ AI mode temporarily unavailable (quota limit). "
+                    "Showing rule-based response._"
+                ),
                 "mode": "rule-based-fallback",
             }), 200
 
@@ -1393,4 +1403,3 @@ INSTRUCTIONS:
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
-

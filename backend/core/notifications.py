@@ -35,12 +35,11 @@ def _build_alert_html(
     score_pct = min(int(risk_score), 100)
 
     # Breakdown bars
-    t_contrib  = breakdown.get("temperature_contribution", 0)
-    r_contrib  = breakdown.get("rainfall_contribution", 0)
+    t_contrib = breakdown.get("temperature_contribution", 0)
+    r_contrib = breakdown.get("rainfall_contribution", 0)
     wl_contrib = breakdown.get("water_level_contribution", 0)
 
     def bar(label: str, value: float, color: str) -> str:
-        pct = min(int(value), 35)   # each factor max ≈ 35 pts
         pct_display = min(int(value / 35 * 100), 100)
         return f"""
         <div style="margin-bottom:12px;">
@@ -61,7 +60,7 @@ def _build_alert_html(
 
     warning_banner = ""
     if risk_level in ("Critical",):
-        warning_banner = f"""
+        warning_banner = """
         <div style="background:#450a0a;border:1px solid #ef4444;border-radius:8px;padding:14px 18px;margin-bottom:20px;text-align:center;">
           <div style="font-size:13px;font-weight:700;color:#fca5a5;letter-spacing:1px;">
             ⚠️ IMMEDIATE ACTION REQUIRED — EVACUATION PROTOCOLS MAY BE NECESSARY
@@ -184,9 +183,9 @@ def send_alert_email(
     Send a rich GLOF alert email for a specific risk event.
     Returns structured result dict: {ok, id, to} or {ok, reason, detail, to}.
     """
-    api_key    = os.environ.get("RESEND_API_KEY", "")
+    api_key = os.environ.get("RESEND_API_KEY", "")
     from_email = os.environ.get("RESEND_FROM_EMAIL", "GLOFWatch <onboarding@resend.dev>")
-    to_email   = (to_email or "").strip().lower()
+    to_email = (to_email or "").strip().lower()
 
     if not api_key:
         return {"ok": False, "reason": "missing_resend_api_key"}
@@ -196,7 +195,7 @@ def send_alert_email(
     _resend.api_key = api_key
 
     subject = f"[GLOFWatch {alert_type}] {lake_name} — Risk Score {risk_score:.1f}"
-    html    = _build_alert_html(
+    html = _build_alert_html(
         lake_name, risk_level, risk_score, alert_type, alert_message,
         breakdown, timestamp, lake_state, lake_elevation,
     )
@@ -232,9 +231,9 @@ def send_email(to_email: str, subject: str, text: str, html: str = "") -> Dict[s
     """
     Generic email send — used by the Celery task for admin broadcasts.
     """
-    api_key    = os.environ.get("RESEND_API_KEY", "")
+    api_key = os.environ.get("RESEND_API_KEY", "")
     from_email = os.environ.get("RESEND_FROM_EMAIL", "GLOFWatch <onboarding@resend.dev>")
-    to_email   = (to_email or "").strip().lower()
+    to_email = (to_email or "").strip().lower()
 
     if not api_key:
         return {"ok": False, "reason": "missing_resend_api_key"}

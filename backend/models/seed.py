@@ -30,7 +30,7 @@ def seed_database(db):
         print("[SEED] Indexes ensured.")
     except Exception as e:
         if "OperationFailure" in str(type(e)):
-            print(f"[SEED] Index conflict detected, dropping 'id_1' and recreating...")
+            print("[SEED] Index conflict detected, dropping 'id_1' and recreating...")
             try:
                 db.lakes.drop_index("id_1")
                 db.lakes.create_index("id", unique=True)

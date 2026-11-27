@@ -1,0 +1,10 @@
+[flake8]
+max-line-length = 120
+exclude = __pycache__,.venv
+per-file-ignores =
+    # Imports follow sys.path / load_dotenv / module mocking set-up on purpose.
+    app.py:E402
+    routes/auth.py:E402
+    tests/conftest.py:E402
+    # Inline-styled HTML email templates.
+    core/notifications.py:E501

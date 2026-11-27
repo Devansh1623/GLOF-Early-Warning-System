@@ -3,8 +3,9 @@ conftest.py — shared pytest fixtures for GLOF backend tests.
 Uses mongomock so no real MongoDB is needed.
 """
 import pytest
-from unittest.mock import MagicMock, patch
-import sys, os
+from unittest.mock import MagicMock
+import sys
+import os
 
 # Ensure backend root is on path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -51,11 +52,14 @@ def client(app):
 
 
 @pytest.fixture
-def admin_token(client):
-    """Register + login an admin user, return JWT token."""
-    client.post("/api/auth/register", json={
-        "email": "admin@test.com", "password": "admin123",
-        "name": "Admin", "role": "admin"
+def admin_token(client, mock_db):
+    """Seed an admin user directly (self-registration can't grant admin), log in, return JWT."""
+    import bcrypt
+    mock_db.users.insert_one({
+        "email": "admin@test.com",
+        "password": bcrypt.hashpw(b"admin123", bcrypt.gensalt()),
+        "name": "Admin",
+        "role": "admin",
     })
     r = client.post("/api/auth/login", json={
         "email": "admin@test.com", "password": "admin123"

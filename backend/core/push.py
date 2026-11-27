@@ -6,10 +6,15 @@ from core.logger import get_logger
 push_log = get_logger("glof.push")
 
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "SOO6-dt4TLYfZIVXjdjHWi7EwgPtL42dwd63lkX-_Jw")
-VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BBNOZOeBo9BwRnnr2O4DJHeT2hikkxejeF65wlVyNUvMGMzkoWBxYFb3sxRJnP2gRGjwZG_sMTZoicNnpGVEvag")
+VAPID_PUBLIC_KEY = os.environ.get(
+    "VAPID_PUBLIC_KEY",
+    "BBNOZOeBo9BwRnnr2O4DJHeT2hikkxejeF65wlVyNUvMGMzkoWBx"
+    "YFb3sxRJnP2gRGjwZG_sMTZoicNnpGVEvag",
+)
 VAPID_CLAIMS = {
     "sub": "mailto:admin@glofwatch.com"
 }
+
 
 def send_web_push(subscription_info: dict, message_data: dict) -> dict:
     """Send a push notification via pywebpush."""

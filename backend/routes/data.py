@@ -2,6 +2,7 @@
 Data routes — Lakes, Events, Alerts CRUD APIs + Test Alerts + User Preferences.
 """
 import json
+import os
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
@@ -10,11 +11,11 @@ from core.logger import alert_log
 from core.schemas import validate_json, AdminEmailAlertSchema
 from tasks import enqueue_email_jobs, enqueue_alert_push_notifications
 
-lakes_bp  = Blueprint("lakes",  __name__)
+lakes_bp = Blueprint("lakes",  __name__)
 events_bp = Blueprint("events", __name__)
 alerts_bp = Blueprint("alerts", __name__)
 
-_db_lakes  = None
+_db_lakes = None
 _db_events = None
 _db_alerts = None
 _redis_client = None
@@ -125,7 +126,7 @@ def init_events(db):
 @events_bp.route("/", methods=["GET"])
 @jwt_required()
 def get_events():
-    state    = request.args.get("state")
+    state = request.args.get("state")
     severity = request.args.get("severity")
     query = {}
     if state:
@@ -226,7 +227,10 @@ def resolve_all_alerts():
         }},
     )
     alert_log.info("All alerts resolved", extra={"user": user, "count": result.modified_count})
-    return jsonify({"message": f"Resolved {result.modified_count} alert(s).", "resolved_count": result.modified_count}), 200
+    return jsonify({
+        "message": f"Resolved {result.modified_count} alert(s).",
+        "resolved_count": result.modified_count,
+    }), 200
 
 
 @alerts_bp.route("/test", methods=["POST"])
@@ -239,10 +243,10 @@ def send_test_alert():
             return jsonify({"error": "Admin access required"}), 403
 
         data = request.get_json() or {}
-        lake_id   = data.get("lake_id", "GL001")
+        lake_id = data.get("lake_id", "GL001")
         lake_name = data.get("lake_name", "South Lhonak Lake")
         alert_type = data.get("type", "Warning")
-        message   = data.get("message", f"[TEST] This is a test {alert_type} alert sent by admin.")
+        message = data.get("message", f"[TEST] This is a test {alert_type} alert sent by admin.")
 
         timestamp = datetime.utcnow().isoformat() + "Z"
         test_score = 85.0 if alert_type == "Emergency" else 70.0
@@ -286,7 +290,7 @@ def send_test_alert():
                 }
             }
             _redis_client.publish("glof_stream", json.dumps(payload))
-            
+
         # Trigger test push notifications
         enqueue_alert_push_notifications({
             "lake_id": lake_id,
@@ -408,13 +412,20 @@ def list_email_jobs():
 
 
 # ── Web Push Subscriptions ──────────────────────────────────────────────────
-import os
+
+
+DEFAULT_VAPID_PUBLIC_KEY = (
+    "BBNOZOeBo9BwRnnr2O4DJHeT2hikkxejeF65wlVyNUvMGMzkoWBx"
+    "YFb3sxRJnP2gRGjwZG_sMTZoicNnpGVEvag"
+)
+
 
 @alerts_bp.route("/push/public-key", methods=["GET"])
 def get_push_public_key():
     # Provide the VAPID public key to the frontend for subscription
-    public_key = os.environ.get("VAPID_PUBLIC_KEY", "BBNOZOeBo9BwRnnr2O4DJHeT2hikkxejeF65wlVyNUvMGMzkoWBxYFb3sxRJnP2gRGjwZG_sMTZoicNnpGVEvag")
+    public_key = os.environ.get("VAPID_PUBLIC_KEY", DEFAULT_VAPID_PUBLIC_KEY)
     return jsonify({"publicKey": public_key}), 200
+
 
 @alerts_bp.route("/push/subscribe", methods=["POST"])
 def subscribe_push():
@@ -422,11 +433,11 @@ def subscribe_push():
     subscription = request.get_json()
     if not subscription or not subscription.get("endpoint"):
         return jsonify({"error": "Invalid subscription payload"}), 400
-        
+
     _db_alerts.push_subscriptions.update_one(
         {"endpoint": subscription["endpoint"]},
         {"$set": {
-            "subscription_info": subscription, 
+            "subscription_info": subscription,
             "updated_at": datetime.now(tz=timezone.utc).isoformat()
         }},
         upsert=True
@@ -444,8 +455,8 @@ def push_broadcast():
             return jsonify({"error": "Admin access required"}), 403
 
         data = request.get_json() or {}
-        title   = data.get("title", "GLOFWatch Alert")
-        body    = data.get("body", "")
+        title = data.get("title", "GLOFWatch Alert")
+        body = data.get("body", "")
         lake_id = data.get("lake_id", "GL001")
         lake_name = data.get("lake_name", "Glacial Lake")
 
@@ -477,4 +488,3 @@ def push_broadcast():
         import traceback
         alert_log.error(f"Internal server error: {e}\n{traceback.format_exc()}")
         return jsonify({"error": "Internal server error"}), 500
-

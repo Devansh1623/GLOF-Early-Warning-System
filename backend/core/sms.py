@@ -15,10 +15,12 @@ TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER", "")
 
+
 def _get_twilio_client():
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
         return None
     return Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
 
 def send_sms(to_number: str, message_body: str) -> Dict[str, object]:
     """Send an SMS via Twilio."""
@@ -43,6 +45,7 @@ def send_sms(to_number: str, message_body: str) -> Dict[str, object]:
     except Exception as e:
         sms_log.error("Twilio SMS Unknown Error", extra={"error": str(e)})
         return {"ok": False, "reason": str(e)}
+
 
 def send_whatsapp(to_number: str, message_body: str) -> Dict[str, object]:
     """Send a WhatsApp message via Twilio."""

@@ -1,8 +1,6 @@
 """
 Integration tests for auth routes and telemetry pipeline.
 """
-import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestAuthRoutes:

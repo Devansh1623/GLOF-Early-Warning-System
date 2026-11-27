@@ -1,11 +1,10 @@
 """
 Tests for marshmallow validation schemas.
 """
-import pytest
 
 from core.schemas import (
     validate_json, TelemetrySchema, RegisterSchema,
-    LoginSchema, AlertPreferencesSchema,
+    LoginSchema,
 )
 
 
