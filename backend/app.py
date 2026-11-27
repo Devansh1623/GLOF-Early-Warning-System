@@ -285,7 +285,8 @@ def health_check():
         mongo_client.admin.command("ping")
         services["mongodb"]["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     except Exception as e:
-        services["mongodb"] = {"status": "error", "detail": str(e)}
+        app_log.warning("Health check: MongoDB unreachable (%s)", type(e).__name__)
+        services["mongodb"] = {"status": "error", "detail": "MongoDB unreachable"}
         overall_ok = False
 
     # ── Redis ─────────────────────────────────────────────────────────────────
@@ -297,7 +298,8 @@ def health_check():
             "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
         }
     except Exception as e:
-        services["redis"] = {"status": "error", "detail": str(e)}
+        app_log.warning("Health check: Redis unreachable (%s)", type(e).__name__)
+        services["redis"] = {"status": "error", "detail": "Redis unreachable"}
         overall_ok = False
 
     # ── Celery ────────────────────────────────────────────────────────────────
@@ -1076,13 +1078,15 @@ def health_detail():
         mongo_client.admin.command("ping")
         checks["mongodb"] = "ok"
     except Exception as e:
-        checks["mongodb"] = str(e)
+        app_log.warning("Health detail: MongoDB unreachable (%s)", type(e).__name__)
+        checks["mongodb"] = "error"
 
     try:
         redis_client.ping()
         checks["redis"] = "ok"
     except Exception as e:
-        checks["redis"] = str(e)
+        app_log.warning("Health detail: Redis unreachable (%s)", type(e).__name__)
+        checks["redis"] = "error"
 
     last_tel = db.telemetry.find_one({}, {"_id": 0, "timestamp": 1}, sort=[("timestamp", DESCENDING)])
     checks["last_telemetry"] = last_tel["timestamp"] if last_tel else None
@@ -1384,7 +1388,6 @@ INSTRUCTIONS:
         return jsonify({
             "reply": rule_based_reply(),
             "mode": "rule-based-fallback",
-            "debug": err_str,
         }), 200
 
 
